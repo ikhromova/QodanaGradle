@@ -1,0 +1,11 @@
+name: "My custom profile"
+
+baseProfile: qodana.single:RedundantElvisReturnNull
+#baseProfile: empty
+
+#inspections:
+#  - group: ALL
+#  - inspection: RedundantElvisReturnNull
+#    enabled: true
+#    ignore:
+#      - "scope#file:src/main/kotlin/good/code/is/red/*.kt"

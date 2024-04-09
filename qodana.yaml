@@ -1,0 +1,34 @@
+#-------------------------------------------------------------------------------#
+#               Qodana analysis is configured by qodana.yaml file               #
+#             https://www.jetbrains.com/help/qodana/qodana-yaml.html            #
+#-------------------------------------------------------------------------------#
+version: "1.0"
+
+#Specify inspection profile for code analysis
+profile:
+  path: custom-profile.yaml
+#  name: empty
+
+#Enable inspections
+#exclude:
+#  - name: HighlightVisitorInternal
+#    paths:
+#      - src/main/kotlin/good/code/is/red/KtCallableDeclaration.kt
+#include:
+#  - name: HighlightVisitorInternal
+#    paths:
+#      - src/main/kotlin/good/code/is/red/KtCallableDeclaration.kt
+#Disable inspections
+
+
+projectJDK: 11 #(Applied in CI/CD pipeline)
+
+#Execute shell command before Qodana execution (Applied in CI/CD pipeline)
+#bootstrap: sh ./prepare-qodana.sh
+
+#Install IDE plugins before Qodana execution (Applied in CI/CD pipeline)
+#plugins:
+#  - id: <plugin.id> #(plugin id can be found at https://plugins.jetbrains.com)
+
+#Specify Qodana linter for analysis (Applied in CI/CD pipeline)
+linter: jetbrains/qodana-jvm:latest
