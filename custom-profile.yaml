@@ -1,6 +1,6 @@
 name: "My custom profile"
 
-baseProfile: qodana.single:RedundantElvisReturnNull
+baseProfile: qodana.single:HighlightVisitorInternal
 #baseProfile: empty
 
 #inspections:
