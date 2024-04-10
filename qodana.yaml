@@ -6,14 +6,14 @@ version: "1.0"
 
 #Specify inspection profile for code analysis
 profile:
-  path: custom-profile.yaml
-#  name: empty
+#  path: custom-profile.yaml
+  name: empty
 
 #Enable inspections
-#exclude:
-#  - name: HighlightVisitorInternal
-#    paths:
-#      - src/main/kotlin/good/code/is/red/KtCallableDeclaration.kt
+include:
+  - name: RedundantElvisReturnNull
+    paths:
+      - platforms/core-configuration/declarative-dsl-core/src/main/kotlin/org/gradle/internal/declarativedsl/parsing/FailureUtils.kt
 #include:
 #  - name: HighlightVisitorInternal
 #    paths:
