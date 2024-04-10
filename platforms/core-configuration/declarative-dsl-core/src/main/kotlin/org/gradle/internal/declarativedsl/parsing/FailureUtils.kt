@@ -33,7 +33,6 @@ import org.gradle.internal.declarativedsl.language.Null
 import org.gradle.internal.declarativedsl.language.PropertyAccess
 import org.gradle.internal.declarativedsl.language.SingleFailureResult
 import org.gradle.internal.declarativedsl.language.This
-import org.gradle.internal.declarativedsl.language.This
 
 fun foo(): Int? = null
 fun test() : Int? {     return foo() ?: return null }
