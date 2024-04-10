@@ -19,5 +19,7 @@ jobs:
           fetch-depth: 0
       - name: 'Qodana Scan'
         uses: JetBrains/qodana-action@main
+        with:
+          args: --property=idea.kotlin.plugin.use.k2=true,--property=idea.is.internal=true
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_K2_MASTER }} # read the steps about it below
