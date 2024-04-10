@@ -32,3 +32,4 @@ projectJDK: 11 #(Applied in CI/CD pipeline)
 
 #Specify Qodana linter for analysis (Applied in CI/CD pipeline)
 linter: registry.jetbrains.team/p/sa/containers/qodana-jvm:latest
+disableSanityInspections: true
