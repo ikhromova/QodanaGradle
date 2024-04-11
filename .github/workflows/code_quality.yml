@@ -22,5 +22,6 @@ jobs:
         uses: JetBrains/qodana-action@main
         with:
           pr-mode: false
+          upload-result: true
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_K2_MASTER }} # read the steps about it below
