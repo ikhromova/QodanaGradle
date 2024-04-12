@@ -23,5 +23,6 @@ jobs:
         with:
           pr-mode: false
           upload-result: true
+          use-caches: false
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_K2_MASTER }} # read the steps about it below
