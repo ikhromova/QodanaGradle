@@ -12,6 +12,7 @@ include:
   - name: RedundantElvisReturnNull
   - name: ClassName
   - name: QodanaJavaSanity
+  - name: HighlightVisitorInternal
 
 projectJDK: 11 #(Applied in CI/CD pipeline)
 
