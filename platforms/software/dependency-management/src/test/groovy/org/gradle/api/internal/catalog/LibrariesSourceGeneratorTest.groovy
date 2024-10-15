@@ -74,11 +74,13 @@ class LibrariesSourceGeneratorTest extends AbstractVersionCatalogTest implements
             TestUtil.instantiatorFactory(),
             new TestIsolatableFactory(),
             Stub(GradleProperties),
+            TestUtil.calculatedValueContainerFactory(),
             Stub(ExecOperations),
             TestUtil.services()
         ),
         null,
-        null
+        null,
+        TestUtil.objectFactory()
     )
 
     def "generates sources for empty model"() {
@@ -385,7 +387,7 @@ ${nameClash { noIntro().kind('dependency bundles').inConflict('one.cool', 'oneCo
     }
 
     private void generate(String className = 'Generated', @DelegatesTo(strategy = Closure.DELEGATE_FIRST, value = VersionCatalogBuilderInternal) Closure<Void> spec) {
-        def problems = new DefaultProblems(Stub(ProblemEmitter))
+        def problems = new DefaultProblems([Stub(ProblemEmitter)])
         DefaultVersionCatalogBuilder builder = new DefaultVersionCatalogBuilder(
             "lib",
             Interners.newStrongInterner(),

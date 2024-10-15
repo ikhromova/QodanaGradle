@@ -69,15 +69,16 @@ include("build-init-samples")
 include("buildquality")
 include("documentation")
 include("integration-testing")
+include("integration-testing-kotlin")
 include("jvm")
 include("kotlin-dsl")
 include("uber-plugins")
 include("packaging")
 include("performance-testing")
 include("profiling")
-include("publishing")
 
 // Components used both at build time and GBT runtime, shipped in the distribution
 include("kotlin-dsl-shared-runtime")
+include("java-api-extractor")
 
 rootProject.name = "build-logic"

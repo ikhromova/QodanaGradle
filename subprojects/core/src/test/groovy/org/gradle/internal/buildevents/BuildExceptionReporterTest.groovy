@@ -19,15 +19,18 @@ package org.gradle.internal.buildevents
 import org.gradle.BuildResult
 import org.gradle.StartParameter
 import org.gradle.api.GradleException
-import org.gradle.api.internal.artifacts.ivyservice.DefaultLenientConfiguration
+import org.gradle.api.internal.artifacts.ivyservice.TypedResolveException
 import org.gradle.api.invocation.Gradle
 import org.gradle.api.logging.LogLevel
 import org.gradle.api.logging.configuration.LoggingConfiguration
 import org.gradle.api.logging.configuration.ShowStacktrace
+import org.gradle.api.problems.internal.Problem
+import org.gradle.api.problems.internal.ProblemAwareFailure
 import org.gradle.api.tasks.TaskExecutionException
 import org.gradle.execution.MultipleBuildFailures
 import org.gradle.initialization.BuildClientMetaData
 import org.gradle.internal.enterprise.core.GradleEnterprisePluginManager
+import org.gradle.internal.exceptions.CompilationFailedIndicator
 import org.gradle.internal.exceptions.ContextAwareException
 import org.gradle.internal.exceptions.DefaultMultiCauseException
 import org.gradle.internal.exceptions.FailureResolutionAware
@@ -53,8 +56,7 @@ class BuildExceptionReporterTest extends Specification {
     static final String LOCATION = "<location>"
     static final String STACKTRACE = "{info}> {normal}Run with {userinput}--stacktrace{normal} option to get the stack trace."
     static final String INFO_OR_DEBUG = "{info}> {normal}Run with {userinput}--info{normal} or {userinput}--debug{normal} option to get more log output."
-    static final String INFO = "{info}> {normal}Run with {userinput}--info{normal} option to get more log output."
-    static final String SCAN = "{info}> {normal}Run with {userinput}--scan{normal} to get full insights."
+    static final String TRY_SCAN = "{info}> {normal}Run with {userinput}--scan{normal} to get full insights."
     static final String GET_HELP = "{info}> {normal}Get more help at {userinput}https://help.gradle.org{normal}."
 
 
@@ -83,7 +85,7 @@ $MESSAGE
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -156,7 +158,7 @@ org.gradle.api.GradleException (no error message)
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -179,7 +181,7 @@ $MESSAGE
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -202,7 +204,7 @@ java.io.IOException
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -226,7 +228,7 @@ $MESSAGE
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -255,7 +257,7 @@ $MESSAGE
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -278,7 +280,7 @@ $MESSAGE
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -302,7 +304,7 @@ $MESSAGE
 
 * Try:
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 
 * Exception is:
@@ -334,7 +336,7 @@ Execution failed for null.
 {info}> {normal}org.gradle.internal.buildevents.TestNonGradleCauseException (no error message)
 
 * Try:
-$SCAN
+$TRY_SCAN
 ==============================================================================
 
 {failure}2: {normal}{failure}Task failed with an exception.{normal}
@@ -347,8 +349,7 @@ Execution failed for null.
 {info}> {normal}org.gradle.internal.buildevents.TestCompilationFailureException (no error message)
 
 * Try:
-$INFO
-$SCAN
+$TRY_SCAN
 ==============================================================================
 
 {failure}3: {normal}{failure}Task failed with an exception.{normal}
@@ -359,7 +360,7 @@ $SCAN
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 ==============================================================================
 """;
@@ -380,7 +381,7 @@ $MESSAGE
 
 * Try:
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 
 * Exception is:
@@ -404,7 +405,7 @@ $MESSAGE
 
 * Try:
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 
 * Exception is:
@@ -417,8 +418,8 @@ org.gradle.api.GradleException: $MESSAGE
         def exception = new TestException() {
             @Override
             void appendResolutions(FailureResolutionAware.Context context) {
-                context.appendResolution { output -> output.append("resolution 1.")}
-                context.appendResolution { output -> output.append("resolution 2.")}
+                context.appendResolution { output -> output.append("resolution 1.") }
+                context.appendResolution { output -> output.append("resolution 2.") }
             }
         }
 
@@ -435,7 +436,7 @@ $MESSAGE
 {info}> {normal}resolution 2.
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -445,7 +446,7 @@ $GET_HELP
             @Override
             void appendResolutions(FailureResolutionAware.Context context) {
                 context.doNotSuggestResolutionsThatRequireBuildDefinition()
-                context.appendResolution { output -> output.append("resolution 1.")}
+                context.appendResolution { output -> output.append("resolution 1.") }
             }
         }
 
@@ -470,7 +471,7 @@ $GET_HELP
         def ultimateCause = new RuntimeException("ultimate cause")
         def branch1 = new DefaultMultiCauseException("first failure", ultimateCause)
         def branch2 = new DefaultMultiCauseException("second failure", ultimateCause)
-        Throwable exception = new ContextAwareException(new DefaultLenientConfiguration.ArtifactResolveException("task dependencies", "org:example:1.0", [branch1, branch2]))
+        Throwable exception = new ContextAwareException(new TypedResolveException("task dependencies", "org:example:1.0", [branch1, branch2]))
 
         when:
         reporter.buildFinished(result(exception))
@@ -489,7 +490,7 @@ Could not resolve all task dependencies for org:example:1.0.
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -500,7 +501,7 @@ $GET_HELP
         def branch2 = new DefaultMultiCauseException("second failure", ultimateCause)
         def intermediateFailure = new DefaultMultiCauseException("intermediate failure", ultimateCause)
         def branch3 = new DefaultMultiCauseException("third failure", intermediateFailure)
-        Throwable exception = new ContextAwareException(new DefaultLenientConfiguration.ArtifactResolveException("task dependencies", "org:example:1.0", [branch1, branch2, branch3]))
+        Throwable exception = new ContextAwareException(new TypedResolveException("task dependencies", "org:example:1.0", [branch1, branch2, branch3]))
 
         when:
         reporter.buildFinished(result(exception))
@@ -519,7 +520,7 @@ Could not resolve all task dependencies for org:example:1.0.
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -532,7 +533,7 @@ $GET_HELP
 
         def branch1 = new DefaultMultiCauseException("first failure", ultimateCause)
         def branch2 = new DefaultMultiCauseException("second failure", ultimateCause)
-        Throwable exception = new ContextAwareException(new DefaultLenientConfiguration.ArtifactResolveException("task dependencies", "org:example:1.0", [branch1, branch2]))
+        Throwable exception = new ContextAwareException(new TypedResolveException("task dependencies", "org:example:1.0", [branch1, branch2]))
 
         when:
         reporter.buildFinished(result(exception))
@@ -551,7 +552,7 @@ Could not resolve all task dependencies for org:example:1.0.
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
@@ -569,7 +570,7 @@ $GET_HELP
         def intermediateFailure2 = new DefaultMultiCauseException("intermediate failure 2", ultimateCause2)
         def branch6 = new DefaultMultiCauseException("sixth failure", intermediateFailure2)
 
-        Throwable exception = new ContextAwareException(new DefaultLenientConfiguration.ArtifactResolveException("task dependencies", "org:example:1.0", [branch1, branch2, branch3, branch4, branch5, branch6]))
+        Throwable exception = new ContextAwareException(new TypedResolveException("task dependencies", "org:example:1.0", [branch1, branch2, branch3, branch4, branch5, branch6]))
 
         when:
         reporter.buildFinished(result(exception))
@@ -590,12 +591,11 @@ Could not resolve all task dependencies for org:example:1.0.
 * Try:
 $STACKTRACE
 $INFO_OR_DEBUG
-$SCAN
+$TRY_SCAN
 $GET_HELP
 """
     }
     // endregion Duplicate Exception Branch Filtering
-
     def result(Throwable failure) {
         BuildResult result = Mock()
         result.failure >> failure
@@ -607,4 +607,19 @@ $GET_HELP
             super(MESSAGE)
         }
     }
+
+    class TestProblemAwareFailure extends Throwable implements CompilationFailedIndicator, ProblemAwareFailure {
+        List<Problem> problems
+
+        TestProblemAwareFailure(Problem... problems) {
+            super("<problem-bearing exception message>")
+            this.problems = Arrays.asList(problems)
+        }
+
+        @Override
+        Collection<Problem> getProblems() {
+            return problems
+        }
+    }
+
 }

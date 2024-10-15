@@ -22,15 +22,16 @@ import org.gradle.api.artifacts.DependencyResolutionListener;
 import org.gradle.api.capabilities.Capability;
 import org.gradle.api.internal.DomainObjectContext;
 import org.gradle.api.internal.artifacts.ConfigurationResolver;
-import org.gradle.api.internal.artifacts.ResolveExceptionContextualizer;
-import org.gradle.api.internal.artifacts.component.ComponentIdentifierFactory;
+import org.gradle.api.internal.artifacts.ResolveExceptionMapper;
 import org.gradle.api.internal.artifacts.dsl.dependencies.DependencyLockingProvider;
 import org.gradle.api.internal.artifacts.ivyservice.moduleconverter.RootComponentMetadataBuilder;
+import org.gradle.api.internal.attributes.AttributeDesugaring;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.internal.collections.DomainObjectCollectionFactory;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.project.ProjectStateRegistry;
 import org.gradle.api.internal.tasks.TaskDependencyFactory;
+import org.gradle.api.problems.internal.InternalProblems;
 import org.gradle.internal.Factory;
 import org.gradle.internal.code.UserCodeApplicationContext;
 import org.gradle.internal.event.ListenerBroadcast;
@@ -51,8 +52,6 @@ public class DefaultConsumableConfiguration extends DefaultConfiguration impleme
         ConfigurationsProvider configurationsProvider,
         ConfigurationResolver resolver,
         ListenerBroadcast<DependencyResolutionListener> dependencyResolutionListeners,
-        DependencyMetaDataProvider metaDataProvider,
-        ComponentIdentifierFactory componentIdentifierFactory,
         DependencyLockingProvider dependencyLockingProvider,
         Factory<ResolutionStrategyInternal> resolutionStrategyFactory,
         FileCollectionFactory fileCollectionFactory,
@@ -62,14 +61,16 @@ public class DefaultConsumableConfiguration extends DefaultConfiguration impleme
         NotationParser<Object, Capability> capabilityNotationParser,
         ImmutableAttributesFactory attributesFactory,
         RootComponentMetadataBuilder rootComponentMetadataBuilder,
-        ResolveExceptionContextualizer exceptionContextualizer,
+        ResolveExceptionMapper exceptionMapper,
+        AttributeDesugaring attributeDesugaring,
         UserCodeApplicationContext userCodeApplicationContext,
         ProjectStateRegistry projectStateRegistry,
         WorkerThreadRegistry workerThreadRegistry,
         DomainObjectCollectionFactory domainObjectCollectionFactory,
         CalculatedValueContainerFactory calculatedValueContainerFactory,
         DefaultConfigurationFactory defaultConfigurationFactory,
-        TaskDependencyFactory taskDependencyFactory
+        TaskDependencyFactory taskDependencyFactory,
+        InternalProblems problemsService
     ) {
         super(
             domainObjectContext,
@@ -77,8 +78,6 @@ public class DefaultConsumableConfiguration extends DefaultConfiguration impleme
             configurationsProvider,
             resolver,
             dependencyResolutionListeners,
-            metaDataProvider,
-            componentIdentifierFactory,
             dependencyLockingProvider,
             resolutionStrategyFactory,
             fileCollectionFactory,
@@ -88,7 +87,8 @@ public class DefaultConsumableConfiguration extends DefaultConfiguration impleme
             capabilityNotationParser,
             attributesFactory,
             rootComponentMetadataBuilder,
-            exceptionContextualizer,
+            exceptionMapper,
+            attributeDesugaring,
             userCodeApplicationContext,
             projectStateRegistry,
             workerThreadRegistry,
@@ -97,6 +97,7 @@ public class DefaultConsumableConfiguration extends DefaultConfiguration impleme
             defaultConfigurationFactory,
             taskDependencyFactory,
             ConfigurationRoles.CONSUMABLE,
+            problemsService,
             true
         );
 

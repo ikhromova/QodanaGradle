@@ -31,9 +31,11 @@ import org.gradle.integtests.fixtures.executer.UnderDevelopmentGradleDistributio
 import org.gradle.internal.SystemProperties;
 import org.gradle.internal.jvm.JavaInfo;
 import org.gradle.internal.jvm.Jvm;
+import org.gradle.internal.jvm.SupportedJavaVersions;
 import org.gradle.internal.jvm.inspection.CachingJvmMetadataDetector;
+import org.gradle.internal.jvm.inspection.DefaultJavaInstallationRegistry;
 import org.gradle.internal.jvm.inspection.DefaultJvmMetadataDetector;
-import org.gradle.internal.jvm.inspection.JavaInstallationRegistry;
+import org.gradle.internal.jvm.inspection.JavaInstallationCapability;
 import org.gradle.internal.jvm.inspection.JvmInstallationMetadata;
 import org.gradle.internal.jvm.inspection.JvmInstallationProblemReporter;
 import org.gradle.internal.jvm.inspection.JvmMetadataDetector;
@@ -42,14 +44,16 @@ import org.gradle.internal.os.OperatingSystem;
 import org.gradle.internal.progress.NoOpProgressLoggerFactory;
 import org.gradle.jvm.toolchain.internal.AsdfInstallationSupplier;
 import org.gradle.jvm.toolchain.internal.CurrentInstallationSupplier;
+import org.gradle.jvm.toolchain.internal.DefaultOsXJavaHomeCommand;
+import org.gradle.jvm.toolchain.internal.DefaultToolchainConfiguration;
 import org.gradle.jvm.toolchain.internal.InstallationLocation;
 import org.gradle.jvm.toolchain.internal.InstallationSupplier;
 import org.gradle.jvm.toolchain.internal.IntellijInstallationSupplier;
 import org.gradle.jvm.toolchain.internal.JabbaInstallationSupplier;
 import org.gradle.jvm.toolchain.internal.LinuxInstallationSupplier;
-import org.gradle.jvm.toolchain.internal.MavenToolchainsInstallationSupplier;
 import org.gradle.jvm.toolchain.internal.OsXInstallationSupplier;
 import org.gradle.jvm.toolchain.internal.SdkmanInstallationSupplier;
+import org.gradle.jvm.toolchain.internal.ToolchainConfiguration;
 import org.gradle.jvm.toolchain.internal.WindowsInstallationSupplier;
 import org.gradle.process.internal.ExecHandleFactory;
 import org.gradle.testfixtures.internal.NativeServicesTestFixture;
@@ -66,9 +70,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
-import static org.gradle.internal.jvm.inspection.JvmInstallationMetadata.JavaInstallationCapability.JAVA_COMPILER;
-import static org.gradle.util.TestUtil.providerFactory;
+import static org.gradle.jvm.toolchain.internal.LocationListInstallationSupplier.JAVA_INSTALLATIONS_PATHS_PROPERTY;
 
 /**
  * Allows the tests to get hold of an alternative Java installation when needed.
@@ -109,6 +113,11 @@ public abstract class AvailableJavaHomes {
     }
 
     @Nullable
+    public static Jvm getJdk23() {
+        return getJdk(JavaVersion.VERSION_23);
+    }
+
+    @Nullable
     public static Jvm getHighestSupportedLTS() {
         return getJdk21();
     }
@@ -116,6 +125,52 @@ public abstract class AvailableJavaHomes {
     @Nullable
     public static Jvm getLowestSupportedLTS() {
         return getJdk8();
+    }
+
+    /**
+     * Get a JVM for each major Java version that is not able to run the Gradle daemon, if available.
+     */
+    public static List<Jvm> getUnsupportedDaemonJdks() {
+        return getJdks(
+            IntStream.range(1, SupportedJavaVersions.MINIMUM_JAVA_VERSION)
+                .mapToObj(JavaVersion::toVersion)
+                .toArray(JavaVersion[]::new)
+        );
+    }
+
+    /**
+     * Get a JVM that is not able to run the Gradle daemon.
+     */
+    @Nullable
+    public static Jvm getUnsupportedDaemonJdk() {
+        return getAvailableJdk(element -> {
+            int majorVersion = Integer.parseInt(element.getLanguageVersion().getMajorVersion());
+            return majorVersion < SupportedJavaVersions.MINIMUM_JAVA_VERSION;
+        });
+    }
+
+    /**
+     * Get a JVM that can run the Gradle daemon, but will not be able to in the next major version.
+     */
+    @Nullable
+    public static Jvm getDeprecatedDaemonJdk() {
+        return getAvailableJdk(element -> {
+            int majorVersion = Integer.parseInt(element.getLanguageVersion().getMajorVersion());
+            return majorVersion >= SupportedJavaVersions.MINIMUM_JAVA_VERSION &&
+                majorVersion < SupportedJavaVersions.FUTURE_MINIMUM_JAVA_VERSION;
+            }
+        );
+    }
+
+    /**
+     * Get a JVM that can run the Gradle daemon and will continue to be able to in the next major version.
+     */
+    @Nullable
+    public static Jvm getNonDeprecatedDaemonJdk() {
+        return getAvailableJdk(element -> {
+            int majorVersion = Integer.parseInt(element.getLanguageVersion().getMajorVersion());
+            return majorVersion > SupportedJavaVersions.FUTURE_MINIMUM_JAVA_VERSION;
+        });
     }
 
     @Nullable
@@ -146,13 +201,20 @@ public abstract class AvailableJavaHomes {
         return getAvailableJdks(element -> version.equals(element.getLanguageVersion()));
     }
 
+    public static List<Jvm> getAvailableJdks(final Spec<? super JvmInstallationMetadata> filter) {
+        return getAvailableJvmMetadatas().stream()
+            .filter(input -> input.getCapabilities().containsAll(JavaInstallationCapability.JDK_CAPABILITIES))
+            .filter(filter::isSatisfiedBy)
+            .map(AvailableJavaHomes::jvmFromMetadata)
+            .collect(Collectors.toList());
+    }
+
     public static List<Jvm> getAvailableJvms() {
         return getAvailableJvmMetadatas().stream().map(AvailableJavaHomes::jvmFromMetadata).collect(Collectors.toList());
     }
 
-    public static List<Jvm> getAvailableJdks(final Spec<? super JvmInstallationMetadata> filter) {
+    public static List<Jvm> getAvailableJvms(final Spec<? super JvmInstallationMetadata> filter) {
         return getAvailableJvmMetadatas().stream()
-            .filter(input -> input.hasCapability(JAVA_COMPILER))
             .filter(filter::isSatisfiedBy)
             .map(AvailableJavaHomes::jvmFromMetadata)
             .collect(Collectors.toList());
@@ -184,6 +246,11 @@ public abstract class AvailableJavaHomes {
     @Nullable
     private static Jvm getSupportedJdk(final Spec<? super JvmInstallationMetadata> filter) {
         return getAvailableJdk(it -> isSupportedVersion(it) && filter.isSatisfiedBy(it));
+    }
+
+    @Nullable
+    private static Jvm getSupportedJvm(final Spec<? super JvmInstallationMetadata> filter) {
+        return Iterables.getFirst(getAvailableJvms(it -> isSupportedVersion(it) && filter.isSatisfiedBy(it)), null);
     }
 
     private static boolean isSupportedVersion(JvmInstallationMetadata jvmInstallation) {
@@ -232,14 +299,22 @@ public abstract class AvailableJavaHomes {
     }
 
     /**
+     * Returns a JRE that has a different Java version to the current one, and which is supported by the Gradle version under test.
+     */
+    @Nullable
+    public static Jvm getDifferentVersionJreOnly() {
+        return getSupportedJvm(element -> !element.getLanguageVersion().equals(Jvm.current().getJavaVersion()) && Collections.disjoint(element.getCapabilities(), JavaInstallationCapability.JDK_CAPABILITIES));
+    }
+
+    /**
      * Returns a JDK that has a different Java home to the current one, is supported by the Gradle version under tests and has a valid JRE.
      */
     public static Jvm getDifferentJdkWithValidJre() {
         return getSupportedJdk(jvm -> !isCurrentJavaHome(jvm)
-            && Jvm.discovered(jvm.getJavaHome().toFile(), null, jvm.getLanguageVersion()).getJre() != null);
+            && Jvm.discovered(jvm.getJavaHome().toFile(), null, Integer.parseInt(jvm.getLanguageVersion().getMajorVersion())).getJre() != null);
     }
 
-    private static boolean isCurrentJavaHome(JvmInstallationMetadata metadata) {
+    public static boolean isCurrentJavaHome(JvmInstallationMetadata metadata) {
         return metadata.getJavaHome().toFile().equals(Jvm.current().getJavaHome());
     }
 
@@ -249,17 +324,8 @@ public abstract class AvailableJavaHomes {
      * @return The JRE home directory, or null if not found
      */
     public static File getBestJre() {
-        Jvm jvm = Jvm.current();
-        File jre = jvm.getStandaloneJre();
-        if (jre != null) {
-            return jre;
-        }
-        jre = jvm.getEmbeddedJre();
-        if (jre != null) {
-            return jre;
-        }
-        // Use the JDK instead
-        return jvm.getJavaHome();
+        // TODO: We should improve this to look for any JRE from any JVM installation
+        return Jvm.current().getJre();
     }
 
     public static JvmInstallationMetadata getJvmInstallationMetadata(Jvm jvm) {
@@ -271,7 +337,7 @@ public abstract class AvailableJavaHomes {
     }
 
     private static Jvm jvmFromMetadata(JvmInstallationMetadata metadata) {
-        return Jvm.discovered(metadata.getJavaHome().toFile(), metadata.getJavaVersion(), metadata.getLanguageVersion());
+        return Jvm.discovered(metadata.getJavaHome().toFile(), metadata.getJavaVersion(), Integer.parseInt(metadata.getLanguageVersion().getMajorVersion()));
     }
 
     public static List<JvmInstallationMetadata> getAvailableJvmMetadatas() {
@@ -284,7 +350,8 @@ public abstract class AvailableJavaHomes {
         DefaultJvmMetadataDetector defaultJvmMetadataDetector =
             new DefaultJvmMetadataDetector(execHandleFactory, temporaryFileProvider);
         JvmMetadataDetector metadataDetector = new CachingJvmMetadataDetector(defaultJvmMetadataDetector);
-        final List<JvmInstallationMetadata> jvms = new JavaInstallationRegistry(defaultInstallationSuppliers(), metadataDetector, new TestBuildOperationRunner(), OperatingSystem.current(), new NoOpProgressLoggerFactory(), new JvmInstallationProblemReporter())
+        ToolchainConfiguration toolchainConfiguration = new DefaultToolchainConfiguration();
+        final List<JvmInstallationMetadata> jvms = new DefaultJavaInstallationRegistry(toolchainConfiguration, defaultInstallationSuppliers(toolchainConfiguration), metadataDetector, new TestBuildOperationRunner(), OperatingSystem.current(), new NoOpProgressLoggerFactory(), new IdentityFileResolver(), Collections::emptySet, new JvmInstallationProblemReporter())
             .toolchains()
             .stream()
             .map(x -> x.metadata)
@@ -300,23 +367,20 @@ public abstract class AvailableJavaHomes {
         return jvms;
     }
 
-    private static List<InstallationSupplier> defaultInstallationSuppliers() {
+    private static List<InstallationSupplier> defaultInstallationSuppliers(ToolchainConfiguration toolchainConfiguration) {
         WindowsRegistry windowsRegistry = NativeServicesTestFixture.getInstance().get(WindowsRegistry.class);
         return Lists.newArrayList(
-            new AsdfInstallationSupplier(providerFactory()),
-            new BaseDirJvmLocator("/opt"),
-            new BaseDirJvmLocator("/opt/jdk"),
-            new BaseDirJvmLocator("C:\\Program Files\\Java\\"),
+            new AsdfInstallationSupplier(toolchainConfiguration),
             new BaseDirJvmLocator(SystemProperties.getInstance().getUserHome()),
-            new CurrentInstallationSupplier(providerFactory()),
+            new CurrentInstallationSupplier(),
+            new ToolchainInstallatioinPathsSystemPropertyJvmLocator(),
             new EnvVariableJvmLocator(),
-            new IntellijInstallationSupplier(providerFactory(), new IdentityFileResolver()),
-            new JabbaInstallationSupplier(providerFactory()),
-            new LinuxInstallationSupplier(providerFactory()),
-            new MavenToolchainsInstallationSupplier(providerFactory(), new IdentityFileResolver()),
-            new OsXInstallationSupplier(TestFiles.execHandleFactory(), providerFactory(), OperatingSystem.current()),
-            new SdkmanInstallationSupplier(providerFactory()),
-            new WindowsInstallationSupplier(windowsRegistry, OperatingSystem.current(), providerFactory())
+            new IntellijInstallationSupplier(toolchainConfiguration),
+            new JabbaInstallationSupplier(toolchainConfiguration),
+            new LinuxInstallationSupplier(),
+            new OsXInstallationSupplier(OperatingSystem.current(), new DefaultOsXJavaHomeCommand(TestFiles.execHandleFactory())),
+            new SdkmanInstallationSupplier(toolchainConfiguration),
+            new WindowsInstallationSupplier(windowsRegistry, OperatingSystem.current())
         );
     }
 
@@ -340,6 +404,30 @@ public abstract class AvailableJavaHomes {
                 .filter(it -> JDK_PATTERN.matcher(it.getKey()).matches())
                 .map(entry -> InstallationLocation.userDefined(new File(entry.getValue()), "env var " + entry.getKey()))
                 .collect(Collectors.toSet());
+        }
+    }
+
+    /**
+     * On CI we pass -Porg.gradle.java.installations.paths=X,Y,Z to the build, then "forward" it
+     * as system property to get deterministic results.
+     */
+    private static class ToolchainInstallatioinPathsSystemPropertyJvmLocator implements InstallationSupplier {
+
+        @Override
+        public String getSourceName() {
+            return "System properties " + JAVA_INSTALLATIONS_PATHS_PROPERTY;
+        }
+
+        @Override
+        public Set<InstallationLocation> get() {
+            final String property = System.getProperty(JAVA_INSTALLATIONS_PATHS_PROPERTY);
+            if (property != null) {
+                return Arrays.stream(property.split(","))
+                    .filter(path -> !path.trim().isEmpty())
+                    .map(path -> InstallationLocation.userDefined(new File(path), getSourceName()))
+                    .collect(Collectors.toSet());
+            }
+            return Collections.emptySet();
         }
     }
 

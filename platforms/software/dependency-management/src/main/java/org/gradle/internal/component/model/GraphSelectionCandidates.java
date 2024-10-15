@@ -16,30 +16,22 @@
 
 package org.gradle.internal.component.model;
 
-import org.gradle.api.artifacts.Dependency;
-
 import javax.annotation.Nullable;
 import java.util.List;
 
 public interface GraphSelectionCandidates {
-    /**
-     * Should variant selection be used?
-     * @return true when variant selection should be used, false when the legacy variant should be used.
-     */
-    boolean isUseVariants();
 
     /**
-     * Returns the set of variants to select from. Should only be called when {@link #isUseVariants()} returns true.
+     * Returns the set of variants to select from during attribute matching, or an empty list of this
+     * component does not support attribute matching.
      */
-    List<? extends VariantGraphResolveState> getVariants();
+    List<? extends VariantGraphResolveState> getVariantsForAttributeMatching();
 
     /**
      * Returns the variant to use when attribute-based variant selection is not enabled.
      */
     @Nullable
-    default VariantGraphResolveState getLegacyVariant() {
-        return getVariantByConfigurationName(Dependency.DEFAULT_CONFIGURATION);
-    }
+    VariantGraphResolveState getLegacyVariant();
 
     /**
      * Returns the variant that is identified by the given configuration name.

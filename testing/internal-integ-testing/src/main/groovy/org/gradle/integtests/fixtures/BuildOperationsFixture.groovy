@@ -40,12 +40,18 @@ class BuildOperationsFixture extends BuildOperationTreeQueries {
         executer.beforeExecute {
             this.tree = null
             executer.withArgument("-D$BuildOperationTrace.SYSPROP=$path")
+            // disable memory hungry tree generation
+            executer.withArgument("-D$BuildOperationTrace.TREE_SYSPROP=false")
         }
     }
 
     @Override
     List<BuildOperationRecord> getRoots() {
         getTree().roots
+    }
+
+    List<BuildOperationRecord> getDanglingChildren() {
+        new BuildOperationTreeFixture(BuildOperationTrace.readPartialTree(path)).roots.findAll { it.parentId != null }
     }
 
     @Override

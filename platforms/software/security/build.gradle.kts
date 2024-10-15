@@ -1,5 +1,6 @@
 plugins {
     id("gradlebuild.distribution.api-java")
+    id("gradlebuild.instrumented-java-project")
 }
 
 description = "Shared classes for projects requiring GPG support"
@@ -11,35 +12,39 @@ errorprone {
 }
 
 dependencies {
-    api(project(":core-api"))
-    api(project(":resources"))
+    api(projects.coreApi)
+    api(projects.resources)
 
     api(libs.bouncycastlePgp)
     api(libs.jsr305)
 
-    implementation(project(":base-services"))
-    implementation(project(":functional"))
-    implementation(project(":logging-api"))
-    implementation(project(":process-services"))
+    implementation(projects.stdlibJavaExtensions)
+    implementation(projects.time)
+    implementation(projects.baseServices)
+    implementation(projects.functional)
+    implementation(projects.loggingApi)
 
     implementation(libs.bouncycastleProvider)
     implementation(libs.guava)
     implementation(libs.inject)
 
-    testImplementation(testFixtures(project(":core")))
+    testImplementation(testFixtures(projects.core))
 
-    testFixturesImplementation(project(":base-services"))
+    testFixturesImplementation(projects.baseServices)
     testFixturesImplementation(libs.slf4jApi)
     testFixturesImplementation(libs.jetty)
     testFixturesImplementation(libs.jettyWebApp)
-    testFixturesImplementation(testFixtures(project(":core")))
-    testFixturesImplementation(project(":internal-integ-testing"))
+    testFixturesImplementation(testFixtures(projects.core))
+    testFixturesImplementation(projects.internalIntegTesting)
 
-    testRuntimeOnly(project(":distributions-core")) {
+    testRuntimeOnly(projects.distributionsCore) {
         because("Tests instantiate DefaultClassLoaderRegistry which requires a 'gradle-plugins.properties' through DefaultPluginModuleRegistry")
     }
 }
 
 packageCycles {
     excludePatterns.add("org/gradle/plugins/signing/type/pgp/**")
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
 }

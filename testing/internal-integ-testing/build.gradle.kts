@@ -15,78 +15,121 @@ sourceSets {
 }
 
 dependencies {
-    api(libs.jettyWebApp) {
-        because("Part of the public API via HttpServer")
-    }
-    api(libs.spock) {
-        because("Part of the public API")
-    }
-    api(project(":internal-testing")) {
-        because("Part of the public API")
-    }
-    api(libs.junit) {
+    api(projects.baseServices) {
         because("Part of the public API, used by spock AST transformer")
     }
-    api(project(":base-services")) {
-        because("Part of the public API, used by spock AST transformer")
+    api(projects.buildCacheBase)
+    api(projects.buildOperations)
+    api(projects.buildOperationsTrace)
+    api(projects.concurrent)
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.dependencyManagement)
+    api(projects.hashing)
+    api(projects.internalTesting) {
+        because("Part of the public API")
     }
-    api(project(":jvm-services")) {
+    api(projects.stdlibJavaExtensions)
+    api(projects.jvmServices) {
         because("Exposing jvm metadata via AvailableJavaHomes")
     }
-    api(testFixtures(project(":core"))) {
+    api(projects.logging)
+    api(projects.loggingApi)
+    api(projects.native)
+    api(projects.persistentCache)
+    api(projects.problemsApi)
+    api(projects.processServices)
+    api(projects.daemonProtocol)
+    api(projects.serviceLookup)
+
+    api(testFixtures(projects.core)) {
         because("HttpServer leaks PortAllocator to spock AST transformer")
     }
 
-    implementation(project(":enterprise-operations"))
-    implementation(project(":messaging"))
-    implementation(project(":native"))
-    implementation(project(":logging"))
-    implementation(project(":cli"))
-    implementation(project(":process-services"))
-    implementation(project(":core-api"))
-    implementation(project(":base-services-groovy"))
-    implementation(project(":files"))
-    implementation(project(":file-collections"))
-    implementation(project(":resources"))
-    implementation(project(":build-cache"))
-    implementation(project(":build-cache-local"))
-    implementation(project(":persistent-cache"))
-    implementation(project(":platform-jvm"))
-    implementation(project(":dependency-management"))
-    implementation(project(":configuration-cache"))
-    implementation(project(":launcher"))
-    implementation(project(":build-events"))
-    implementation(project(":build-option"))
-
-    implementation(libs.groovy)
-    implementation(libs.groovyAnt)
-    implementation(libs.groovyDatetime)
-    implementation(libs.groovyJson)
-    implementation(libs.groovyXml)
-    implementation(libs.nativePlatform)
-    implementation(libs.commonsLang)
-    implementation(libs.commonsIo)
-    implementation(libs.jetty)
-    implementation(libs.jettySecurity)
-
-    implementation(libs.littleproxy)
-    implementation(libs.socksProxy)
-    implementation(libs.gcs)
-    implementation(libs.inject)
-    implementation(libs.commonsHttpclient)
-    implementation(libs.joda)
-    implementation(libs.jacksonCore)
-    implementation(libs.jacksonAnnotations)
-    implementation(libs.jacksonDatabind)
-    implementation(libs.ivy)
-    implementation(libs.commonsCompress)
-    implementation(libs.jgit) {
+    api(libs.gson)
+    api(libs.groovy)
+    api(libs.groovyXml)
+    api(libs.guava)
+    api(libs.hamcrestCore)
+    api(libs.hamcrest)
+    api(libs.jettyWebApp) {
+        because("Part of the public API via HttpServer")
+    }
+    api(libs.jansi)
+    api(libs.jettySecurity)
+    api(libs.jettyServer)
+    api(libs.jettyUtil)
+    api(libs.jgit) {
         because("Some tests require a git reportitory - see AbstractIntegrationSpec.initGitDir(")
     }
-    implementation(libs.jetbrainsAnnotations) {
-        because("Generated language annotations for spock tests")
+    api(libs.jsr305)
+    api(libs.junit) {
+        because("Part of the public API, used by spock AST transformer")
+    }
+    api(libs.mavenResolverApi) {
+        because("For ApiMavenResolver. API we interact with to resolve Maven graphs & artifacts")
+    }
+    api(libs.samplesCheck) {
+        exclude(module = "groovy-all")
+    }
+    api(libs.samplesDiscovery)
+    api(libs.servletApi)
+    api(libs.slf4jApi)
+    api(libs.socksProxy)
+    api(libs.spock) {
+        because("Part of the public API")
     }
 
+    implementation(projects.baseServicesGroovy)
+    implementation(projects.buildCache)
+    implementation(projects.buildEvents)
+    implementation(projects.buildOption)
+    implementation(projects.buildState)
+    implementation(projects.cli)
+    implementation(projects.daemonServices)
+    implementation(projects.enterpriseOperations)
+    implementation(projects.enterpriseLogging)
+    implementation(projects.files)
+    implementation(projects.fileCollections)
+    implementation(projects.fileTemp)
+    implementation(projects.instrumentationAgentServices)
+    implementation(projects.io)
+    implementation(projects.messaging)
+    implementation(projects.modelCore)
+    implementation(projects.serialization)
+    implementation(projects.serviceProvider)
+    implementation(projects.serviceRegistryBuilder)
+    implementation(projects.time)
+    implementation(projects.buildProcessServices)
+    implementation(projects.gradleCli)
+    implementation(projects.launcher)
+    implementation(projects.clientServices)
+
+    implementation(testFixtures(projects.buildOperations))
+
+    implementation(libs.ansiControlSequenceUtil)
+    implementation(libs.commonsCompress)
+    implementation(libs.commonsLang)
+    implementation(libs.commonsLang3)
+    implementation(libs.commonsIo)
+    implementation(libs.groovyAnt)
+    implementation(libs.groovyJson)
+    implementation(libs.httpcore)
+    implementation(libs.inject)
+    implementation(libs.ivy)
+    implementation(libs.jcifs)
+    implementation(libs.jetty)
+    implementation(libs.jettyServlet)
+    implementation(libs.littleproxy)
+    implementation(libs.mavenResolverSupplier) {
+        because("For ApiMavenResolver. Wires together implementation for maven-resolver-api")
+    }
+    implementation(libs.maven3ResolverProvider) {
+        because("For ApiMavenResolver. Provides MavenRepositorySystemUtils")
+    }
+    implementation(libs.nativePlatform)
+    implementation(libs.netty)
+    implementation(libs.opentest4j)
     // we depend on both: sshd platforms and libraries
     implementation(libs.sshdCore)
     implementation(platform(libs.sshdCore))
@@ -95,27 +138,12 @@ dependencies {
     implementation(libs.sshdSftp)
     implementation(platform(libs.sshdSftp))
 
-    implementation(libs.gson)
-    implementation(libs.joda)
-    implementation(libs.jsch)
-    implementation(libs.jcifs)
-    implementation(libs.jansi)
-    implementation(libs.ansiControlSequenceUtil)
-    implementation(libs.mina)
-    implementation(libs.samplesCheck) {
-        exclude(module = "groovy-all")
-        exclude(module = "slf4j-simple")
+    compileOnly(projects.configurationCache) {
+        because("""Fixes:
+            compiler message file broken: key=compiler.misc.msg.bug arguments=11.0.21, {1}, {2}, {3}, {4}, {5}, {6}, {7}
+            java.lang.AssertionError: typeSig ERROR""")
     }
 
-    implementation(libs.mavenResolverApi) {
-        because("For ApiMavenResolver. API we interact with to resolve Maven graphs & artifacts")
-    }
-    implementation(libs.mavenResolverSupplier) {
-        because("For ApiMavenResolver. Wires together implementation for maven-resolver-api")
-    }
-    implementation(libs.maven3ResolverProvider) {
-        because("For ApiMavenResolver. Provides MavenRepositorySystemUtils")
-    }
     runtimeOnly(libs.mavenResolverImpl) {
         because("For ApiMavenResolver. Implements maven-resolver-api")
     }
@@ -129,10 +157,11 @@ dependencies {
         because("For ApiMavenResolver. To resolve http:// URLs")
     }
 
-    testRuntimeOnly(project(":distributions-core")) {
+    testRuntimeOnly(projects.distributionsCore) {
         because("Tests instantiate DefaultClassLoaderRegistry which requires a 'gradle-plugins.properties' through DefaultPluginModuleRegistry")
     }
-    integTestDistributionRuntimeOnly(project(":distributions-core"))
+
+    integTestDistributionRuntimeOnly(projects.distributionsCore)
 }
 
 packageCycles {
@@ -149,8 +178,8 @@ val prepareVersionsInfo = tasks.register<PrepareVersionsInfo>("prepareVersionsIn
 }
 
 val copyTestedVersionsInfo by tasks.registering(Copy::class) {
-    from(rootProject.layout.projectDirectory.file("gradle/dependency-management/agp-versions.properties"))
-    from(rootProject.layout.projectDirectory.file("gradle/dependency-management/kotlin-versions.properties"))
+    from(isolated.rootProject.projectDirectory.file("gradle/dependency-management/agp-versions.properties"))
+    from(isolated.rootProject.projectDirectory.file("gradle/dependency-management/kotlin-versions.properties"))
     into(layout.buildDirectory.dir("generated-resources/tested-versions"))
 }
 
@@ -189,4 +218,7 @@ abstract class PrepareVersionsInfo : DefaultTask() {
         properties["versions"] = versions.get()
         gradlebuild.basics.util.ReproduciblePropertiesWriter.store(properties, destFile.get().asFile)
     }
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
 }

@@ -22,32 +22,31 @@ import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.artifacts.result.ResolvedVariantResult;
 import org.gradle.api.internal.artifacts.result.DefaultResolvedVariantResult;
 import org.gradle.api.internal.attributes.AttributeDesugaring;
+import org.gradle.api.internal.capabilities.ImmutableCapability;
 import org.gradle.api.internal.component.ArtifactType;
 import org.gradle.internal.Describables;
 import org.gradle.internal.component.external.model.DefaultImmutableCapability;
 import org.gradle.internal.component.external.model.ImmutableCapabilities;
-import org.gradle.internal.component.resolution.failure.exception.ConfigurationSelectionException;
-import org.gradle.internal.component.resolution.failure.type.ConfigurationNotConsumableFailure;
-import org.gradle.internal.lazy.Lazy;
 import org.gradle.internal.resolve.resolver.ArtifactResolver;
 import org.gradle.internal.resolve.result.BuildableArtifactSetResolveResult;
 
 import javax.annotation.Nullable;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
-public abstract class AbstractComponentGraphResolveState<T extends ComponentGraphResolveMetadata, S extends ComponentResolveMetadata> implements ComponentGraphResolveState, ComponentArtifactResolveState {
+public abstract class AbstractComponentGraphResolveState<T extends ComponentGraphResolveMetadata> implements ComponentGraphResolveState, ComponentArtifactResolveState {
     private final long instanceId;
     private final T graphMetadata;
-    private final S artifactMetadata;
     private final AttributeDesugaring attributeDesugaring;
+    private final ImmutableCapability implicitCapability;
 
-    public AbstractComponentGraphResolveState(long instanceId, T graphMetadata, S artifactMetadata, AttributeDesugaring attributeDesugaring) {
+    // The public view of all graph variants of this component, mapped by their instance ID.
+    private final ConcurrentHashMap<Long, ResolvedVariantResult> publicVariants = new ConcurrentHashMap<>();
+
+    public AbstractComponentGraphResolveState(long instanceId, T graphMetadata, AttributeDesugaring attributeDesugaring) {
         this.instanceId = instanceId;
         this.graphMetadata = graphMetadata;
-        this.artifactMetadata = artifactMetadata;
         this.attributeDesugaring = attributeDesugaring;
+        this.implicitCapability =  DefaultImmutableCapability.defaultCapabilityForComponent(graphMetadata.getModuleVersionId());
     }
 
     @Override
@@ -70,21 +69,14 @@ public abstract class AbstractComponentGraphResolveState<T extends ComponentGrap
         return graphMetadata;
     }
 
-    public S getArtifactMetadata() {
-        return artifactMetadata;
-    }
-
-    @Override
-    public GraphSelectionCandidates getCandidatesForGraphVariantSelection() {
-        return new DefaultGraphSelectionCandidates(this);
-    }
-
     @Override
     public boolean isAdHoc() {
         return false;
     }
 
-    protected abstract Optional<List<? extends VariantGraphResolveState>> getVariantsForGraphTraversal();
+    protected AttributeDesugaring getAttributeDesugaring() {
+        return attributeDesugaring;
+    }
 
     @Nullable
     @Override
@@ -99,7 +91,12 @@ public abstract class AbstractComponentGraphResolveState<T extends ComponentGrap
 
     @Override
     public void resolveArtifactsWithType(ArtifactResolver artifactResolver, ArtifactType artifactType, BuildableArtifactSetResolveResult result) {
-        artifactResolver.resolveArtifactsWithType(getResolveMetadata(), artifactType, result);
+        artifactResolver.resolveArtifactsWithType(getArtifactMetadata(), artifactType, result);
+    }
+
+    @Override
+    public ImmutableCapability getDefaultCapability() {
+        return implicitCapability;
     }
 
     protected ImmutableCapabilities capabilitiesFor(ImmutableCapabilities capabilities) {
@@ -110,81 +107,25 @@ public abstract class AbstractComponentGraphResolveState<T extends ComponentGrap
         }
     }
 
-    protected abstract static class AbstractVariantGraphResolveState implements VariantGraphResolveState {
-        private final Lazy<ResolvedVariantResult> publicView;
-        private final AbstractComponentGraphResolveState<?, ?> component;
-
-        public AbstractVariantGraphResolveState(AbstractComponentGraphResolveState<?, ?> component) {
-            this.publicView = Lazy.locking().of(() -> createVariantResult(null));
-            this.component = component;
+    @Override
+    public ResolvedVariantResult getPublicViewFor(VariantGraphResolveState variant, @Nullable ResolvedVariantResult externalVariant) {
+        if (externalVariant != null) {
+            // Don't cache the result
+            // Note that the external variant is a function of the metadata of the component, so should be constructed by this state object and cached rather than passed in
+            return createVariantResult(variant, externalVariant);
         }
 
-        @Override
-        public boolean isAdHoc() {
-            return component.isAdHoc();
-        }
-
-        @Override
-        public ResolvedVariantResult getVariantResult(@Nullable ResolvedVariantResult externalVariant) {
-            if (externalVariant != null) {
-                // Don't cache the result
-                // Note that the external variant is a function of the metadata of the component, so should be constructed by this state object and cached rather than passed in
-                return createVariantResult(externalVariant);
-            } else {
-                return publicView.get();
-            }
-        }
-
-        private DefaultResolvedVariantResult createVariantResult(@Nullable ResolvedVariantResult externalVariant) {
-            VariantGraphResolveMetadata metadata = getMetadata();
-            return new DefaultResolvedVariantResult(
-                component.getId(),
-                Describables.of(metadata.getName()),
-                component.attributeDesugaring.desugar(metadata.getAttributes()),
-                component.capabilitiesFor(metadata.getCapabilities()),
-                externalVariant);
-        }
+        return publicVariants.computeIfAbsent(variant.getInstanceId(), k -> createVariantResult(variant, null));
     }
 
-    private static class DefaultGraphSelectionCandidates implements GraphSelectionCandidates {
-        private final List<? extends VariantGraphResolveState> variants;
-        private final AbstractComponentGraphResolveState<?, ?> component;
-
-        public DefaultGraphSelectionCandidates(AbstractComponentGraphResolveState<?, ?> component) {
-            this.variants = component.getVariantsForGraphTraversal().orElse(Collections.emptyList());
-            this.component = component;
-        }
-
-        @Override
-        public boolean isUseVariants() {
-            return !variants.isEmpty();
-        }
-
-        @Override
-        public List<? extends VariantGraphResolveState> getVariants() {
-            if (variants.isEmpty()) {
-                throw new IllegalStateException("No variants available for selection");
-            }
-            return variants;
-        }
-
-        @Nullable
-        @Override
-        public VariantGraphResolveState getVariantByConfigurationName(String name) {
-            ConfigurationGraphResolveState conf = component.getConfiguration(name);
-            if (conf == null) {
-                return null;
-            }
-
-            // Ensure configuration is consumable, since all variants are by definition consumable.
-            ConfigurationGraphResolveMetadata metadata = conf.getMetadata();
-            if (!metadata.isCanBeConsumed()) {
-                ConfigurationNotConsumableFailure failure = new ConfigurationNotConsumableFailure(name, component.getId().getDisplayName());
-                String message = String.format("Selected configuration '" + failure.getRequestedName() + "' on '" + failure.getRequestedComponentDisplayName() + "' but it can't be used as a project dependency because it isn't intended for consumption by other components.");
-                throw new ConfigurationSelectionException(message, failure, Collections.emptyList());
-            }
-
-            return conf.asVariant();
-        }
+    private DefaultResolvedVariantResult createVariantResult(VariantGraphResolveState variant, @Nullable ResolvedVariantResult externalVariant) {
+        VariantGraphResolveMetadata metadata = variant.getMetadata();
+        return new DefaultResolvedVariantResult(
+            getId(),
+            Describables.of(metadata.getName()),
+            attributeDesugaring.desugar(metadata.getAttributes()),
+            capabilitiesFor(metadata.getCapabilities()),
+            externalVariant
+        );
     }
 }

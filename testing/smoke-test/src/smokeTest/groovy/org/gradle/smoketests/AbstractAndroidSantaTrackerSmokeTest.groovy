@@ -19,12 +19,13 @@ package org.gradle.smoketests
 import org.gradle.api.JavaVersion
 import org.gradle.integtests.fixtures.daemon.DaemonLogsAnalyzer
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
-import org.gradle.internal.scan.config.fixtures.ApplyGradleEnterprisePluginFixture
+import org.gradle.internal.scan.config.fixtures.ApplyDevelocityPluginFixture
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.testkit.runner.BuildResult
 import org.gradle.testkit.runner.TaskOutcome
 import org.gradle.testkit.runner.internal.ToolingApiGradleExecutor
+import org.gradle.util.internal.VersionNumber
 import org.junit.Rule
 
 /**
@@ -56,19 +57,19 @@ class AbstractAndroidSantaTrackerSmokeTest extends AbstractSmokeTest implements 
 
     protected void setupCopyOfSantaTracker(TestFile targetDir) {
         copyRemoteProject("santaTracker", targetDir)
-        ApplyGradleEnterprisePluginFixture.applyEnterprisePlugin(targetDir.file("settings.gradle"))
+        ApplyDevelocityPluginFixture.applyDevelocityPlugin(targetDir.file("settings.gradle"))
     }
 
     protected SmokeTestGradleRunner.SmokeTestBuildResult buildLocation(File projectDir, String agpVersion) {
         return runnerForLocation(projectDir, agpVersion, "assembleDebug").deprecations(SantaTrackerDeprecations) {
-            expectFilteredFileCollectionDeprecationWarning()
+            expectFilteredFileCollectionDeprecationWarning(agpVersion)
         }.build()
     }
 
     protected SmokeTestGradleRunner.SmokeTestBuildResult buildCachedLocation(File projectDir, String agpVersion) {
         return runnerForLocation(projectDir, agpVersion, "assembleDebug").deprecations(SantaTrackerDeprecations) {
-            if (GradleContextualExecuter.notConfigCache) {
-                expectFilteredFileCollectionDeprecationWarning()
+            if (GradleContextualExecuter.isNotConfigCache()) {
+                expectFilteredFileCollectionDeprecationWarning(agpVersion)
             }
         }.build()
     }
@@ -76,6 +77,13 @@ class AbstractAndroidSantaTrackerSmokeTest extends AbstractSmokeTest implements 
     static class SantaTrackerDeprecations extends BaseDeprecations implements WithAndroidDeprecations {
         SantaTrackerDeprecations(SmokeTestGradleRunner runner) {
             super(runner)
+        }
+
+        def expectFilteredFileCollectionDeprecationWarning(String agpVersion) {
+            def agpVersionNumber = VersionNumber.parse(agpVersion)
+            if (agpVersionNumber.baseVersion >= VersionNumber.parse("8.7.0")) {
+                expectFilteredFileCollectionDeprecationWarning()
+            }
         }
     }
 
@@ -88,13 +96,15 @@ class AbstractAndroidSantaTrackerSmokeTest extends AbstractSmokeTest implements 
             "-DagpVersion=$agpVersion",
             "-DkotlinVersion=$kotlinVersion",
             "-DjavaVersion=${AGP_VERSIONS.getMinimumJavaVersionFor(agpVersion).majorVersion}",
+            "-DbuildToolsVersion=${AGP_VERSIONS.getBuildToolsVersionFor(agpVersion)}",
             "--stacktrace"
         ] + tasks.toList()
 
         def runner = agpRunner(agpVersion, *runnerArgs)
             .withProjectDir(projectDir)
             .withTestKitDir(homeDir)
-            .forwardOutput()
+            .withJdkWarningChecksDisabled() // Kapt seems to be accessing JDK internals. See KT-49187
+
         if (JavaVersion.current().isJava9Compatible()) {
             runner.withJvmArguments(
                 "-Xmx8g", "-XX:MaxMetaspaceSize=1024m", "-XX:+HeapDumpOnOutOfMemoryError",

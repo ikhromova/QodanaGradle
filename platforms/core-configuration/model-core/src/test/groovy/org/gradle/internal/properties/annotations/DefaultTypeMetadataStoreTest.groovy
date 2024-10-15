@@ -22,7 +22,6 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.AbstractTask
 import org.gradle.api.internal.ConventionTask
-import org.gradle.api.internal.DocumentationRegistry
 import org.gradle.api.internal.DynamicObjectAware
 import org.gradle.api.internal.HasConvention
 import org.gradle.api.internal.IConventionAware
@@ -31,6 +30,7 @@ import org.gradle.api.model.ReplacedBy
 import org.gradle.api.plugins.ExtensionAware
 import org.gradle.api.problems.Severity
 import org.gradle.api.problems.internal.GradleCoreProblemGroup
+import org.gradle.api.problems.internal.InternalProblems
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.CompileClasspath
@@ -69,8 +69,6 @@ import static org.gradle.internal.reflect.validation.TypeValidationProblemRender
 import static org.gradle.util.internal.TextUtil.normaliseLineSeparators
 
 class DefaultTypeMetadataStoreTest extends Specification implements ValidationMessageChecker {
-    static final DocumentationRegistry DOCUMENTATION_REGISTRY = new DocumentationRegistry()
-
     static final PROCESSED_PROPERTY_TYPE_ANNOTATIONS = [
         Input, InputFile, InputFiles, InputDirectory, Nested, OutputFile, OutputDirectory, OutputFiles, OutputDirectories, Destroys, LocalState
     ]
@@ -95,7 +93,7 @@ class DefaultTypeMetadataStoreTest extends Specification implements ValidationMe
         cacheFactory
     )
     def propertyTypeResolver = new DefaultPropertyTypeResolver()
-    def metadataStore = new DefaultTypeMetadataStore([], services.getAll(PropertyAnnotationHandler), [Classpath, CompileClasspath], typeAnnotationMetadataStore, propertyTypeResolver, cacheFactory)
+    def metadataStore = new DefaultTypeMetadataStore([], services.getAll(PropertyAnnotationHandler), [Classpath, CompileClasspath], typeAnnotationMetadataStore, propertyTypeResolver, cacheFactory, MissingPropertyAnnotationHandler.DO_NOTHING)
 
     def setupSpec() {
         groovyClassLoader = new GroovyClassLoader(getClass().classLoader)
@@ -115,7 +113,7 @@ class DefaultTypeMetadataStoreTest extends Specification implements ValidationMe
         _ * annotationHandler.propertyRelevant >> true
         _ * annotationHandler.annotationType >> SearchPath
 
-        def metadataStore = new DefaultTypeMetadataStore([], [annotationHandler], [], typeAnnotationMetadataStore, TestPropertyTypeResolver.INSTANCE, cacheFactory)
+        def metadataStore = new DefaultTypeMetadataStore([], [annotationHandler], [], typeAnnotationMetadataStore, TestPropertyTypeResolver.INSTANCE, cacheFactory, MissingPropertyAnnotationHandler.DO_NOTHING)
 
         when:
         def typeMetadata = metadataStore.getTypeMetadata(TaskWithCustomAnnotation)
@@ -145,7 +143,7 @@ class DefaultTypeMetadataStoreTest extends Specification implements ValidationMe
             }
         }
 
-        def metadataStore = new DefaultTypeMetadataStore([], [annotationHandler], [], typeAnnotationMetadataStore, TestPropertyTypeResolver.INSTANCE, cacheFactory)
+        def metadataStore = new DefaultTypeMetadataStore([], [annotationHandler], [], typeAnnotationMetadataStore, TestPropertyTypeResolver.INSTANCE, cacheFactory, MissingPropertyAnnotationHandler.DO_NOTHING)
 
         when:
         def typeMetadata = metadataStore.getTypeMetadata(TaskWithCustomAnnotation)
@@ -173,7 +171,7 @@ class DefaultTypeMetadataStoreTest extends Specification implements ValidationMe
             }
         }
 
-        def metadataStore = new DefaultTypeMetadataStore([], [annotationHandler], [], typeAnnotationMetadataStore, TestPropertyTypeResolver.INSTANCE, cacheFactory)
+        def metadataStore = new DefaultTypeMetadataStore([], [annotationHandler], [], typeAnnotationMetadataStore, TestPropertyTypeResolver.INSTANCE, cacheFactory, MissingPropertyAnnotationHandler.DO_NOTHING)
 
         when:
         def typeMetadata = metadataStore.getTypeMetadata(TaskWithCustomAnnotation)
@@ -198,7 +196,7 @@ class DefaultTypeMetadataStoreTest extends Specification implements ValidationMe
             }
         }
 
-        def metadataStore = new DefaultTypeMetadataStore([typeAnnotationHandler], [], [], typeAnnotationMetadataStore, TestPropertyTypeResolver.INSTANCE, cacheFactory)
+        def metadataStore = new DefaultTypeMetadataStore([typeAnnotationHandler], [], [], typeAnnotationMetadataStore, TestPropertyTypeResolver.INSTANCE, cacheFactory, MissingPropertyAnnotationHandler.DO_NOTHING)
 
         when:
         def taskMetadata = metadataStore.getTypeMetadata(DefaultTask)
@@ -399,6 +397,7 @@ class DefaultTypeMetadataStoreTest extends Specification implements ValidationMe
 
     def "warns about and ignores properties that are not annotated"() {
         when:
+        def metadataStore = new DefaultTypeMetadataStore([], services.getAll(PropertyAnnotationHandler), [Classpath, CompileClasspath], typeAnnotationMetadataStore, propertyTypeResolver, cacheFactory, MissingPropertyAnnotationHandler.MISSING_INPUT_OUTPUT_HANDLER)
         def metadata = metadataStore.getTypeMetadata(TypeWithUnannotatedProperties)
 
         then:
@@ -451,7 +450,7 @@ class DefaultTypeMetadataStoreTest extends Specification implements ValidationMe
     }
 
     private List<String> collectProblems(TypeMetadata metadata) {
-        def validationContext = DefaultTypeValidationContext.withoutRootType(false)
+        def validationContext = DefaultTypeValidationContext.withoutRootType(false, Stub(InternalProblems.class))
         metadata.visitValidationFailures(null, validationContext)
         return validationContext.problems.collect { normaliseLineSeparators(renderMinimalInformationAbout(it)) }
     }

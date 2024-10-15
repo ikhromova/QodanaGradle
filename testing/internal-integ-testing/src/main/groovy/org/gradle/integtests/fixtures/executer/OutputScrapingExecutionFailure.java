@@ -185,12 +185,6 @@ public class OutputScrapingExecutionFailure extends OutputScrapingExecutionResul
     }
 
     @Override
-    public ExecutionFailure assertHasCause(String description) {
-        assertThatCause(startsWith(description));
-        return this;
-    }
-
-    @Override
     public ExecutionFailure assertThatCause(Matcher<? super String> matcher) {
         Set<String> seen = new LinkedHashSet<>();
         for (Problem problem : problems) {
@@ -245,15 +239,25 @@ public class OutputScrapingExecutionFailure extends OutputScrapingExecutionResul
     }
 
     @Override
-    public ExecutionFailure assertHasDescription(String context) {
-        assertThatDescription(startsWith(context));
+    public ExecutionFailure assertThatDescription(Matcher<? super String> matcher) {
+        assertHasFailure(matcher, f -> {
+        });
         return this;
     }
 
     @Override
-    public ExecutionFailure assertThatDescription(Matcher<? super String> matcher) {
-        assertHasFailure(matcher, f -> {
-        });
+    public ExecutionFailure assertThatAllDescriptions(Matcher<? super String> matcher) {
+        Set<String> unmatched = new LinkedHashSet<>();
+        for (Problem problem : problems) {
+            if (matcher.matches(problem.description)) {
+                problemsNotChecked.remove(problem);
+            } else {
+                unmatched.add(problem.description);
+            }
+        }
+        if (!unmatched.isEmpty()) {
+            failureOnUnexpectedOutput(String.format("Not all failure descriptions match\nExpected: All failure descriptions are %s\n     but: unmatched failure descriptions %s", matcher, unmatched));
+        }
         return this;
     }
 
@@ -277,22 +281,17 @@ public class OutputScrapingExecutionFailure extends OutputScrapingExecutionResul
     }
 
     @Override
-    public ExecutionFailure assertTestsFailed() {
-        new DetailedExecutionFailure(this).assertTestsFailed();
-        return this;
-    }
-
-    @Override
-    public DependencyResolutionFailure assertResolutionFailure(String configurationPath) {
-        return new DependencyResolutionFailure(this, configurationPath);
-    }
-
-    @Override
     public void assertResultVisited() {
         super.assertResultVisited();
         // Ensure that exceptions are not unintentionally introduced.
         if (problems.size() > 1 && !problemsNotChecked.isEmpty()) {
-            throw new AssertionFailedError("The build failed with multiple exceptions, however not all exceptions where checked during the test. This can be done using assertHasFailures(n), assertHasDescription() or assertHasCause() or one of the variants of these methods.");
+            String nonCheckedProblems = problemsNotChecked.stream().map(p -> "- " + p.description).collect(joining("\n"));
+            throw new AssertionFailedError(String.format(
+                "The build failed with multiple exceptions, however not all exceptions where checked during the test. " +
+                    "This can be done using assertHasFailures(n), assertHasDescription() or assertHasCause() or one of the variants of these methods.%n" +
+                    "Unchecked problems:%n%s",
+                nonCheckedProblems
+            ));
         }
     }
 

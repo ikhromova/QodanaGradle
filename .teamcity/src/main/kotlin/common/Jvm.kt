@@ -28,7 +28,14 @@ data class DefaultJvm(
 
 object BuildToolBuildJvm : Jvm {
     override val version: JvmVersion
-        get() = JvmVersion.java11
+        get() = JvmVersion.java17
+    override val vendor: JvmVendor
+        get() = JvmVendor.openjdk
+}
+
+object OpenJdk8 : Jvm {
+    override val version: JvmVersion
+        get() = JvmVersion.java8
     override val vendor: JvmVendor
         get() = JvmVendor.openjdk
 }

@@ -88,6 +88,7 @@ trait WithPluginValidation {
                 "--continue",
                 *extraParameters] as String[])
             validation.ignoreDeprecationWarnings("We are only checking type validation problems here")
+            validation.withJdkWarningChecksDisabled()
 
             def result
             if (failsValidation) {
@@ -102,7 +103,7 @@ trait WithPluginValidation {
                     !(it.outcome in [
                         TaskOutcome.NO_SOURCE,
                         TaskOutcome.SKIPPED
-                    ]) && it.path.contains(taskPattern)
+                    ]) && it.path.contains(taskPattern) && !it.path.startsWith(':plugins:') // ignore plugins project from previous version, it doesn't exist anymore (TODO: remove this check)
                 }
                 .collect {
                     def idx = it.path.indexOf(taskPattern)

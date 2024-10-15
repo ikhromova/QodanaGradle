@@ -36,7 +36,7 @@ abstract class WellBehavedPluginTest extends AbstractIntegrationSpec {
         DefaultPluginManager.CORE_PLUGIN_PREFIX + getPluginName()
     }
 
-    String getMainTask() {
+    def getMainTask() {
         return "assemble"
     }
 
@@ -46,12 +46,9 @@ abstract class WellBehavedPluginTest extends AbstractIntegrationSpec {
         "AntlrPluginIntegrationTest",
         "PlayApplicationPluginGoodBehaviourIntegrationTest",
         "PmdPluginIntegrationTest",
-        "CppLibraryPluginIntegrationTest",
-        "CppApplicationPluginIntegrationTest",
-        "XcodePluginIntegrationTest",
         "IdeaPluginGoodBehaviourTest"
     ])
-    def "can apply plugin unqualified"() {
+    void "can apply plugin unqualified"() {
         given:
         applyPluginUnqualified()
 
@@ -64,6 +61,7 @@ abstract class WellBehavedPluginTest extends AbstractIntegrationSpec {
         applyPlugin()
 
         when:
+        executer.withArgument("--no-problems-report")
         run "tasks"
 
         then:
@@ -76,9 +74,6 @@ abstract class WellBehavedPluginTest extends AbstractIntegrationSpec {
         "AntlrPluginIntegrationTest",
         "PlayApplicationPluginGoodBehaviourIntegrationTest",
         "PmdPluginIntegrationTest",
-        "CppLibraryPluginIntegrationTest",
-        "CppApplicationPluginIntegrationTest",
-        "XcodePluginIntegrationTest",
         "IdeaPluginGoodBehaviourTest"
     ])
     def "plugin can build with empty project"() {

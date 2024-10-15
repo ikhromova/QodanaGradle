@@ -25,57 +25,57 @@ dependencies {
     reports("jquery:jquery.min:3.5.1@js")
     reports("flot:flot:0.8.1:min@js")
 
+    api(projects.baseServices)
+    api(projects.coreApi)
+    api(projects.internalIntegTesting)
+    api(projects.internalTesting)
+    api(projects.stdlibJavaExtensions)
+    api(projects.logging)
+    api(projects.persistentCache)
+    api(projects.reportRendering)
+    api(projects.time)
+    api(projects.toolingApi)
+
     api(libs.gradleProfiler) {
         because("Consumers need to instantiate BuildMutators")
     }
-    implementation(libs.javaParser) {
-        because("The Groovy compiler inspects the dependencies at compile time")
-    }
-
+    api(libs.guava)
+    api(libs.groovy)
+    api(libs.jacksonAnnotations)
+    api(libs.jatl)
+    api(libs.jettyServer)
     api(libs.jettyWebApp)
+    api(libs.jsr305)
+    api(libs.junit)
+    api(libs.spock)
 
-    implementation(project(":base-services"))
-    implementation(project(":native"))
-    implementation(project(":cli"))
-    implementation(project(":logging"))
-    implementation(project(":process-services"))
-    implementation(project(":core-api"))
-    implementation(project(":build-option"))
-    implementation(project(":file-collections"))
-    implementation(project(":snapshots"))
-    implementation(project(":resources"))
-    implementation(project(":persistent-cache"))
-    implementation(project(":jvm-services"))
-    implementation(project(":wrapper-shared"))
-    implementation(project(":internal-integ-testing"))
+    implementation(projects.concurrent)
+    implementation(projects.wrapperShared)
 
-    implementation(libs.junit)
-    implementation(libs.spock)
     implementation(libs.commonsIo)
     implementation(libs.commonsLang)
-    implementation(libs.guava)
-    implementation(libs.groovy)
+    implementation(libs.commonsMath)
+    implementation(projects.core)
     implementation(libs.groovyAnt)
     implementation(libs.groovyJson)
     implementation(libs.hikariCP)
-    implementation(libs.jacksonAnnotations)
     implementation(libs.jacksonCore)
     implementation(libs.jacksonDatabind)
-    implementation(libs.slf4jApi)
+    implementation(libs.jettyUtil)
     implementation(libs.joda)
-    implementation(libs.jatl)
-    implementation(libs.commonsHttpclient)
-    implementation(libs.jsch)
-    implementation(libs.commonsMath)
-    implementation(libs.jclToSlf4j)
-    implementation(libs.mina)
     implementation(libs.joptSimple)
-    implementation(testFixtures(project(":core")))
-    implementation(testFixtures(project(":tooling-api")))
+    implementation(libs.mina)
+    implementation(libs.slf4jApi)
 
+    compileOnly(libs.javaParser) {
+        because("The Groovy compiler inspects the dependencies at compile time")
+    }
+
+    runtimeOnly(libs.jclToSlf4j)
+    runtimeOnly(libs.jetty)
     runtimeOnly(libs.mySqlConnector)
 
-    integTestDistributionRuntimeOnly(project(":distributions-core"))
+    integTestDistributionRuntimeOnly(projects.distributionsCore)
 }
 
 val reportResources = tasks.register<Copy>("reportResources") {
@@ -93,4 +93,7 @@ tasks.jar {
         .withPathSensitivity(PathSensitivity.RELATIVE)
 
     from(files(provider{ flamegraph.map { zipTree(it) } }))
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
 }

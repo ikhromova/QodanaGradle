@@ -22,9 +22,11 @@ import gradlebuild.basics.buildBranch
 import gradlebuild.basics.buildCommitId
 import gradlebuild.basics.capitalize
 import gradlebuild.basics.defaultPerformanceBaselines
+import gradlebuild.basics.getBuildEnvironmentExtension
 import gradlebuild.basics.includePerformanceTestScenarios
 import gradlebuild.basics.logicalBranch
 import gradlebuild.basics.performanceBaselines
+import gradlebuild.basics.performanceChannel
 import gradlebuild.basics.performanceDependencyBuildIds
 import gradlebuild.basics.performanceGeneratorMaxProjects
 import gradlebuild.basics.performanceTestVerbose
@@ -32,6 +34,7 @@ import gradlebuild.basics.propertiesForPerformanceDb
 import gradlebuild.basics.releasedVersionsFile
 import gradlebuild.basics.repoRoot
 import gradlebuild.basics.toLowerCase
+import gradlebuild.basics.toolchainInstallationPaths
 import gradlebuild.integrationtests.addDependenciesAndConfigurations
 import gradlebuild.integrationtests.ide.AndroidStudioProvisioningExtension
 import gradlebuild.integrationtests.ide.AndroidStudioProvisioningPlugin
@@ -42,6 +45,7 @@ import gradlebuild.performance.generator.tasks.JvmProjectGeneratorTask
 import gradlebuild.performance.generator.tasks.ProjectGeneratorTask
 import gradlebuild.performance.generator.tasks.TemplateProjectGeneratorTask
 import gradlebuild.performance.tasks.BuildCommitDistribution
+import gradlebuild.performance.tasks.DefaultCommandExecutor
 import gradlebuild.performance.tasks.DetermineBaselines
 import gradlebuild.performance.tasks.PerformanceTest
 import gradlebuild.performance.tasks.PerformanceTestReport
@@ -62,6 +66,7 @@ import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Zip
 import org.gradle.api.tasks.testing.Test
 import org.gradle.internal.os.OperatingSystem
+import org.gradle.jvm.toolchain.internal.LocationListInstallationSupplier.JAVA_INSTALLATIONS_PATHS_PROPERTY
 import org.gradle.kotlin.dsl.*
 import org.gradle.plugins.ide.eclipse.EclipsePlugin
 import org.gradle.plugins.ide.eclipse.model.EclipseModel
@@ -83,10 +88,10 @@ object Config {
     const val performanceTestResultsJsonName = "perf-results.json"
     const val performanceTestResultsJson = "performance-tests/$performanceTestResultsJsonName"
 
-    // Android Studio Iguana 2023.2.1 Patch 1
+    // Android Studio Jellyfish 2023.3.1
     // Find all references here https://developer.android.com/studio/archive
     // Update verification-metadata.xml
-    const val performanceTestAndroidStudioVersion = "2023.2.1.24"
+    const val performanceTestAndroidStudioVersion = "2023.3.1.18"
     val performanceTestAndroidStudioJvmArgs = listOf("-Xms256m", "-Xmx4096m")
 }
 
@@ -147,7 +152,9 @@ class PerformanceTestPlugin : Plugin<Project> {
 
         val junit by configurations.creating
         dependencies {
-            "performanceTestImplementation"(project(":internal-performance-testing"))
+            if (project.name != "enterprise-plugin-performance") {
+                "performanceTestImplementation"(project(":internal-performance-testing"))
+            }
             junit("junit:junit:4.13")
         }
     }
@@ -170,7 +177,7 @@ class PerformanceTestPlugin : Plugin<Project> {
         }
 
         tasks.withType<TemplateProjectGeneratorTask>().configureEach {
-            sharedTemplateDirectory = project(":internal-performance-testing").file("src/templates")
+            sharedTemplateDirectory = project(":internal-performance-testing").isolated.projectDirectory.file("src/templates").asFile
         }
     }
 
@@ -189,7 +196,7 @@ class PerformanceTestPlugin : Plugin<Project> {
             reportDir = project.layout.buildDirectory.dir(this@configureEach.name)
             databaseParameters = project.propertiesForPerformanceDb
             branchName = buildBranch
-            channel.convention(branchName.map { "commits-$it" })
+            channel = project.performanceChannel.orElse(branchName.map { "commits-$it" })
             val prefix = channel.map { channelName ->
                 val osIndependentPrefix = if (channelName.startsWith("flakiness-detection")) {
                     "flakiness-detection"
@@ -232,6 +239,9 @@ class PerformanceTestPlugin : Plugin<Project> {
             inputs.files(performanceSourceSet.runtimeClasspath).withNormalizer(ClasspathNormalizer::class)
             inputs.file(performanceScenarioJson.absolutePath)
             inputs.file(tmpPerformanceScenarioJson.absolutePath)
+            project.toolchainInstallationPaths.orNull?.apply {
+                systemProperty(JAVA_INSTALLATIONS_PATHS_PROPERTY, this)
+            }
         }
     }
 
@@ -242,6 +252,11 @@ class PerformanceTestPlugin : Plugin<Project> {
             classpath = performanceSourceSet.runtimeClasspath
             maxParallelForks = 1
             systemProperty("org.gradle.performance.scenario.json", outputJson.absolutePath)
+            systemProperty("org.gradle.performance.develocity.plugin.infoDir", projectDir.absolutePath)
+
+            project.toolchainInstallationPaths.orNull?.apply {
+                systemProperty(JAVA_INSTALLATIONS_PATHS_PROPERTY, this)
+            }
 
             outputs.cacheIf { false }
             outputs.file(outputJson)
@@ -306,9 +321,10 @@ class PerformanceTestPlugin : Plugin<Project> {
         // extension.baselines -> determineBaselines.configuredBaselines
         // determineBaselines.determinedBaselines -> performanceTest.baselines
         // determineBaselines.determinedBaselines -> buildCommitDistribution.baselines
-        val determineBaselines = tasks.register("determineBaselines", DetermineBaselines::class, false)
+        val commandExecutor = objects.newInstance<DefaultCommandExecutor>()
+        val determineBaselines = tasks.register("determineBaselines", DetermineBaselines::class, false, commandExecutor)
         val buildCommitDistribution = tasks.register("buildCommitDistribution", BuildCommitDistribution::class)
-        val buildCommitDistributionsDir = project.rootProject.layout.buildDirectory.dir("commit-distributions")
+        val buildCommitDistributionsDir = project.getBuildEnvironmentExtension().rootProjectBuildDir.dir("commit-distributions")
 
         determineBaselines.configure {
             configuredBaselines = extension.baselines
@@ -392,7 +408,7 @@ class PerformanceTestExtension(
         registeredPerformanceTests.add(
             createPerformanceTest("${testProject}PerformanceAdHocTest", generatorTask) {
                 description = "Runs ad-hoc performance tests on $testProject - can be used locally"
-                channel = "adhoc"
+                channel.set("adhoc")
                 outputs.doNotCacheIf("Is adhoc performance test") { true }
                 mustRunAfter(currentlyRegisteredTestProjects)
                 testSpecificConfigurator(this)
@@ -406,7 +422,7 @@ class PerformanceTestExtension(
         registeredPerformanceTests.add(
             createPerformanceTest("${testProject}PerformanceTest", generatorTask) {
                 description = "Runs performance tests on $testProject - supposed to be used on CI"
-                channel = "commits$channelSuffix"
+                channel.set("commits$channelSuffix")
 
                 extensions.findByType<DevelocityTestConfiguration>()?.testRetry?.maxRetries = 1
 
@@ -435,6 +451,7 @@ class PerformanceTestExtension(
             reportDir = project.layout.buildDirectory.file("${this.name}/${Config.performanceTestReportsDir}").get().asFile
             resultsJson = project.layout.buildDirectory.file("${this.name}/${Config.performanceTestResultsJson}").get().asFile
             addDatabaseParameters(project.propertiesForPerformanceDb)
+            channel = project.performanceChannel
             testClassesDirs = performanceSourceSet.output.classesDirs
             classpath = performanceSourceSet.runtimeClasspath
 
@@ -488,7 +505,7 @@ class PerformanceTestExtension(
                         if (allTestsWereSkipped(file)) {
                             exclude()
                         }
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         exclude()
                     }
                 }

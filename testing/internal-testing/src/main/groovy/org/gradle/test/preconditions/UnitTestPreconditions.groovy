@@ -18,10 +18,13 @@ package org.gradle.test.preconditions
 
 import groovy.transform.CompileStatic
 import org.gradle.api.JavaVersion
+import org.gradle.internal.jvm.SupportedJavaVersions
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.test.precondition.TestPrecondition
 import org.testcontainers.DockerClientFactory
 
+// These imports are required, IntelliJ incorrectly thinks that they are not used because old versions of Groovy
+// permitted subtypes to use the parent type's methods without importing them
 import static org.gradle.test.precondition.TestPrecondition.satisfied;
 import static org.gradle.test.precondition.TestPrecondition.notSatisfied;
 
@@ -133,10 +136,17 @@ class UnitTestPreconditions {
         }
     }
 
+    static final class Java8OnMacOs implements TestPrecondition {
+        @Override
+        boolean isSatisfied() {
+            return satisfied(MacOs) && JavaVersion.current() == JavaVersion.VERSION_1_8
+        }
+    }
+
     static final class NotJava8OnMacOs implements TestPrecondition {
         @Override
         boolean isSatisfied() {
-            return notSatisfied(MacOs) && JavaVersion.current() != JavaVersion.VERSION_1_8
+            return notSatisfied(Java8OnMacOs)
         }
     }
 
@@ -191,6 +201,40 @@ class UnitTestPreconditions {
                 return false
             }
             return true
+        }
+    }
+
+    /**
+     * The current JVM is not able to run the Gradle daemon.
+     */
+    static final class UnsupportedDaemonJdkVersion implements TestPrecondition {
+        @Override
+        boolean isSatisfied() {
+            def currentMajor = Integer.parseInt(JavaVersion.current().majorVersion)
+            return currentMajor < SupportedJavaVersions.MINIMUM_JAVA_VERSION
+        }
+    }
+
+    /**
+     * The current JVM can run the Gradle daemon, but will not be able to in the next major version.
+     */
+    static final class DeprecatedDaemonJdkVersion implements TestPrecondition {
+        @Override
+        boolean isSatisfied() {
+            def currentMajor = Integer.parseInt(JavaVersion.current().majorVersion)
+            return (currentMajor < SupportedJavaVersions.FUTURE_MINIMUM_JAVA_VERSION) &&
+                (currentMajor >= SupportedJavaVersions.MINIMUM_JAVA_VERSION)
+        }
+    }
+
+    /**
+     * The current JVM can run the Gradle daemon, and will continue to be able to in the next major version.
+     */
+    static final class NonDeprecatedDaemonJdkVersion implements TestPrecondition {
+        @Override
+        boolean isSatisfied() {
+            def currentMajor = Integer.parseInt(JavaVersion.current().majorVersion)
+            return currentMajor >= SupportedJavaVersions.FUTURE_MINIMUM_JAVA_VERSION
         }
     }
 
@@ -467,6 +511,13 @@ class UnitTestPreconditions {
         }
     }
 
+    static final class KotlinOnlySupportsJdk21Earlier implements TestPrecondition {
+        @Override
+        boolean isSatisfied() {
+            return new Jdk21OrEarlier().satisfied
+        }
+    }
+
     static final class Online implements TestPrecondition {
         @Override
         boolean isSatisfied() {
@@ -497,10 +548,33 @@ class UnitTestPreconditions {
     }
 
     static final class HasXCode implements TestPrecondition {
+        private static Boolean installed = null
+
+        private static boolean isInstalled() {
+            if (OperatingSystem.current().isMacOsX()) {
+                // XCTest is bundled with XCode, so the test cannot be run if XCode is not installed
+                def result = ["xcrun", "--show-sdk-platform-path"].execute().waitFor()
+                // If it fails, assume XCode is not installed
+                return result == 0
+            } else {
+                return false
+            }
+        }
+
         @Override
         boolean isSatisfied() {
-            // Simplistic approach at detecting Xcode by assuming macOS imply Xcode is present
-            return satisfied(MacOs)
+            if (installed == null) {
+                installed = isInstalled()
+            }
+            return installed
+        }
+    }
+
+    static final class HasXCTest implements TestPrecondition {
+        @Override
+        boolean isSatisfied() {
+            // Bundled with XCode on macOS
+            return notSatisfied(MacOs) || satisfied(HasXCode)
         }
     }
 

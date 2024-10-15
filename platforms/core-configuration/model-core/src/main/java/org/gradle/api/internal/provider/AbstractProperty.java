@@ -241,7 +241,14 @@ public abstract class AbstractProperty<T, S extends ValueSupplier> extends Abstr
 
     @Override
     public void implicitFinalizeValue() {
-        state.disallowChangesAndFinalizeOnNextGet();
+        if (!state.isUpgradedPropertyValue()) {
+            state.disallowChangesAndFinalizeOnNextGet();
+        }
+    }
+
+    @Override
+    public void markAsUpgradedProperty() {
+        state.markAsUpgradedPropertyValue();
     }
 
     @Override
@@ -301,7 +308,14 @@ public abstract class AbstractProperty<T, S extends ValueSupplier> extends Abstr
      */
     protected void discardValue() {
         assertCanMutate();
-        value = state.implicitValue();
+        if (isDefaultConvention()) {
+            // special case: discarding value without a convention restores the initial state
+            state.implicitValue(getDefaultConvention());
+            value = getDefaultValue();
+        } else {
+            // otherwise, the convention will become the new value
+            value = state.implicitValue(state.convention());
+        }
     }
 
     /**
@@ -350,6 +364,8 @@ public abstract class AbstractProperty<T, S extends ValueSupplier> extends Abstr
         }
         return this;
     }
+
+    protected abstract S getDefaultValue();
 
     protected abstract S getDefaultConvention();
 

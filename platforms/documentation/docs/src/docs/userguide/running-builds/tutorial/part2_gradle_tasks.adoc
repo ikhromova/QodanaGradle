@@ -97,7 +97,7 @@ tasks.register<Copy>("copyTask") {
 =====
 [source, groovy]
 ----
-tasks.register(Copy, "copyTask") {
+tasks.register("copyTask", Copy) {
     from("source")
     into("target")
     include("*.war")
@@ -131,13 +131,13 @@ Here is an example of explicit task dependency:
 ----
 tasks.register("hello") {
     doLast {
-        println('Hello!')
+        println("Hello!")
     }
 }
 
 tasks.register("greet") {
     doLast {
-        println('How are you?')
+        println("How are you?")
     }
     dependsOn("hello")
 }

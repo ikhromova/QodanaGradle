@@ -205,7 +205,12 @@ class CrossVersionPerformanceTestRunner extends PerformanceTestSpec {
                 distribution(new PerformanceTestGradleDistribution(dist, workingDir))
                 tasksToRun(this.tasksToRun as String[])
                 cleanTasks(this.cleanTasks as String[])
-                args((this.args + ['--stacktrace', '-I', RepoScriptBlockUtil.createMirrorInitScript().absolutePath, "-D${PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY}=${gradlePluginRepositoryMirrorUrl()}".toString()]) as String[])
+
+                if (RepoScriptBlockUtil.isMirrorEnabled()) {
+                    args((this.args + ['--stacktrace', '-I', RepoScriptBlockUtil.createMirrorInitScript().absolutePath, "-D${PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY}=${gradlePluginRepositoryMirrorUrl()}".toString()]) as String[])
+                } else {
+                    args((this.args + ['--stacktrace']) as String[])
+                }
                 jvmArgs(gradleOptsInUse as String[])
                 useDaemon(this.useDaemon)
                 useToolingApi(this.useToolingApi)
@@ -228,7 +233,7 @@ class CrossVersionPerformanceTestRunner extends PerformanceTestSpec {
     }
 
     private List<String> resolveGradleOpts() {
-        PerformanceTestJvmOptions.normalizeJvmOptions(this.gradleOpts)
+        PerformanceTestJvmOptions.normalizeGradleJvmOptions(useDaemon, PerformanceTestJvmOptions.normalizeJvmOptions(this.gradleOpts))
     }
 
     def <T extends LongRunningOperation> ToolingApiAction<T> toolingApi(String displayName, Function<ProjectConnection, T> initialAction) {

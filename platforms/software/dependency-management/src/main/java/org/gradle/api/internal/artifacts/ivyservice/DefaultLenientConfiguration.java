@@ -18,7 +18,6 @@ package org.gradle.api.internal.artifacts.ivyservice;
 import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.FileCollectionDependency;
 import org.gradle.api.artifacts.LenientConfiguration;
-import org.gradle.api.artifacts.ResolveException;
 import org.gradle.api.artifacts.ResolvedArtifact;
 import org.gradle.api.artifacts.ResolvedDependency;
 import org.gradle.api.artifacts.UnresolvedDependency;
@@ -190,10 +189,17 @@ public class DefaultLenientConfiguration implements LenientConfigurationInternal
     }
 
     @Override
+    @Deprecated
     public Set<File> getFiles() {
+        DeprecationLogger.deprecateMethod(LenientConfiguration.class, "getFiles()")
+            .withAdvice("Use a lenient ArtifactView instead.")
+            .willBeRemovedInGradle9()
+            .withUpgradeGuideSection(8, "deprecate_legacy_configuration_get_files")
+            .nagUser();
+
         LenientFilesAndArtifactResolveVisitor visitor = new LenientFilesAndArtifactResolveVisitor();
         artifactSetResolver.visitArtifacts(getSelectedArtifacts().getArtifacts(), visitor, resolutionHost);
-        resolutionHost.rethrowFailure("files", visitor.getFailures());
+        resolutionHost.rethrowFailuresAndReportProblems("files", visitor.getFailures());
         return visitor.files;
     }
 
@@ -209,7 +215,7 @@ public class DefaultLenientConfiguration implements LenientConfigurationInternal
         LenientFilesAndArtifactResolveVisitor visitor = new LenientFilesAndArtifactResolveVisitor();
         ResolvedArtifactSet filteredArtifacts = resolveFilteredArtifacts(dependencySpec, getSelectedArtifacts());
         artifactSetResolver.visitArtifacts(filteredArtifacts, visitor, resolutionHost);
-        resolutionHost.rethrowFailure("files", visitor.getFailures());
+        resolutionHost.rethrowFailuresAndReportProblems("files", visitor.getFailures());
         return visitor.files;
     }
 
@@ -217,7 +223,7 @@ public class DefaultLenientConfiguration implements LenientConfigurationInternal
     public Set<ResolvedArtifact> getArtifacts() {
         LenientArtifactCollectingVisitor visitor = new LenientArtifactCollectingVisitor();
         artifactSetResolver.visitArtifacts(getSelectedArtifacts().getArtifacts(), visitor, resolutionHost);
-        resolutionHost.rethrowFailure("artifacts", visitor.getFailures());
+        resolutionHost.rethrowFailuresAndReportProblems("artifacts", visitor.getFailures());
         return visitor.artifacts;
     }
 
@@ -233,7 +239,7 @@ public class DefaultLenientConfiguration implements LenientConfigurationInternal
         LenientArtifactCollectingVisitor visitor = new LenientArtifactCollectingVisitor();
         ResolvedArtifactSet filteredArtifacts = resolveFilteredArtifacts(dependencySpec, getSelectedArtifacts());
         artifactSetResolver.visitArtifacts(filteredArtifacts, visitor, resolutionHost);
-        resolutionHost.rethrowFailure("artifacts", visitor.getFailures());
+        resolutionHost.rethrowFailuresAndReportProblems("artifacts", visitor.getFailures());
         return visitor.artifacts;
     }
 
@@ -305,23 +311,6 @@ public class DefaultLenientConfiguration implements LenientConfigurationInternal
         @Override
         public FileCollectionStructureVisitor.VisitType prepareForVisit(FileCollectionInternal.Source source) {
             return FileCollectionStructureVisitor.VisitType.Visit;
-        }
-    }
-
-    public static class ArtifactResolveException extends ResolveException {
-        private final String type;
-        private final String displayName;
-
-        public ArtifactResolveException(String type, String displayName, Iterable<? extends Throwable> failures) {
-            super(displayName, failures);
-            this.type = type;
-            this.displayName = displayName;
-        }
-
-        // Need to override as error message is hardcoded in constructor of public type ResolveException
-        @Override
-        public String getMessage() {
-            return String.format("Could not resolve all %s for %s.", type, displayName);
         }
     }
 

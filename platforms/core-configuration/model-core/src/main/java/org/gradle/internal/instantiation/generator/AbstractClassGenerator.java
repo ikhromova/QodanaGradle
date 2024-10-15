@@ -33,6 +33,7 @@ import org.gradle.api.Action;
 import org.gradle.api.Describable;
 import org.gradle.api.DomainObjectSet;
 import org.gradle.api.ExtensiblePolymorphicDomainObjectContainer;
+import org.gradle.api.IsolatedAction;
 import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.NonExtensible;
 import org.gradle.api.artifacts.dsl.DependencyCollector;
@@ -42,6 +43,7 @@ import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.internal.DynamicObjectAware;
 import org.gradle.api.internal.IConventionAware;
+import org.gradle.api.internal.plugins.software.SoftwareType;
 import org.gradle.api.plugins.ExtensionAware;
 import org.gradle.api.provider.HasMultipleValues;
 import org.gradle.api.provider.ListProperty;
@@ -53,7 +55,6 @@ import org.gradle.api.provider.SupportsConvention;
 import org.gradle.api.reflect.InjectionPointQualifier;
 import org.gradle.api.tasks.Nested;
 import org.gradle.cache.internal.CrossBuildInMemoryCache;
-import org.gradle.api.internal.plugins.software.SoftwareType;
 import org.gradle.internal.Cast;
 import org.gradle.internal.extensibility.NoConventionMapping;
 import org.gradle.internal.instantiation.ClassGenerationException;
@@ -64,6 +65,7 @@ import org.gradle.internal.logging.text.TreeFormatter;
 import org.gradle.internal.reflect.ClassDetails;
 import org.gradle.internal.reflect.ClassInspector;
 import org.gradle.internal.reflect.JavaPropertyReflectionUtil;
+import org.gradle.internal.reflect.JavaReflectionUtil;
 import org.gradle.internal.reflect.MethodSet;
 import org.gradle.internal.reflect.PropertyAccessorType;
 import org.gradle.internal.reflect.PropertyDetails;
@@ -90,6 +92,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static java.util.Optional.ofNullable;
+import static org.gradle.api.internal.GeneratedSubclasses.unpack;
 
 /**
  * Generates a subclass of the target class to mix-in some DSL behaviour.
@@ -109,7 +112,7 @@ abstract class AbstractClassGenerator implements ClassGenerator {
     /**
      * Types that are allowed to be instantiated directly by Gradle when exposed as a getter on a type.
      *
-     * @implNote Keep in sync with platforms/documentation/docs/src/docs/userguide/extending-gradle/custom_gradle_types.adoc
+     * @implNote Keep in sync with platforms/documentation/docs/src/docs/userguide/authoring-builds/gradle-properties/properties_providers.adoc
      * @see ManagedObjectFactory#newInstance
      */
     private static final ImmutableSet<Class<?>> MANAGED_PROPERTY_TYPES = ImmutableSet.of(
@@ -176,7 +179,7 @@ abstract class AbstractClassGenerator implements ClassGenerator {
         return roleHandler;
     }
 
-    private <T> TypeToken<Provider<T>> providerOf(Class<T> providerType) {
+    private static <T> TypeToken<Provider<T>> providerOf(Class<T> providerType) {
         return new TypeToken<Provider<T>>() {
         }.where(new TypeParameter<T>() {
         }, providerType);
@@ -184,15 +187,7 @@ abstract class AbstractClassGenerator implements ClassGenerator {
 
     @Override
     public <T> GeneratedClass<? extends T> generate(Class<T> type) {
-        GeneratedClassImpl generatedClass = generatedClasses.getIfPresent(type);
-        if (generatedClass == null) {
-            // It is possible that multiple threads will execute this branch concurrently, when the type is missing. However, the contract for `get()` below will ensure that
-            // only one thread will actually generate the implementation class
-            generatedClass = generatedClasses.get(type, generator);
-            // Also use the generated class for itself
-            generatedClasses.put(generatedClass.generatedClass, generatedClass);
-        }
-        return Cast.uncheckedNonnullCast(generatedClass);
+        return Cast.uncheckedNonnullCast(generatedClasses.get(unpack(type), generator));
     }
 
     private GeneratedClassImpl generateUnderLock(Class<?> type) {
@@ -363,10 +358,8 @@ abstract class AbstractClassGenerator implements ClassGenerator {
             return false;
         }
         // Ignore irrelevant synthetic metaClass field injected by the Groovy compiler
-        if (instanceFields.size() == 1 && isSyntheticMetaClassField(instanceFields.get(0))) {
-            return false;
-        }
-        return true;
+        return instanceFields.size() != 1
+            || !isSyntheticMetaClassField(instanceFields.get(0));
     }
 
     private boolean isSyntheticMetaClassField(Field field) {
@@ -431,8 +424,14 @@ abstract class AbstractClassGenerator implements ClassGenerator {
 
     private static boolean isLazyAttachProperty(PropertyMetadata property) {
         // Property is readable and without a setter of property type and getter is not final, so attach owner lazily when queried
-        // This should apply to all 'managed' types however only the Provider types and @Nested value current implement OwnerAware
-        return property.isReadableWithoutSetterOfPropertyType() && !property.getOverridableGetters().isEmpty() && (Provider.class.isAssignableFrom(property.getType()) || hasNestedAnnotation(property));
+        // This should apply to all 'managed' types however only the ConfigurableFileCollection and Provider types and @Nested value current implement OwnerAware
+        return property.isReadableWithoutSetterOfPropertyType() && !property.getOverridableGetters().isEmpty()
+            && (Provider.class.isAssignableFrom(property.getType()) || isConfigurableFileCollectionType(property.getType()) || hasNestedAnnotation(property));
+    }
+
+    private static boolean isReattachProperty(PropertyMetadata property) {
+        // Properties that should have reattached property owners upon reading from the cache
+        return hasPropertyType(property) || isConfigurableFileCollectionType(property.getType());
     }
 
     private static boolean isNameProperty(PropertyMetadata property) {
@@ -455,7 +454,7 @@ abstract class AbstractClassGenerator implements ClassGenerator {
     }
 
     private static boolean isAttachableType(MethodMetadata method) {
-        return Provider.class.isAssignableFrom(method.getReturnType()) || hasNestedAnnotation(method);
+        return Provider.class.isAssignableFrom(method.getReturnType()) || isConfigurableFileCollectionType(method.getReturnType()) || hasNestedAnnotation(method);
     }
 
     private static boolean hasNestedAnnotation(MethodMetadata method) {
@@ -776,6 +775,7 @@ abstract class AbstractClassGenerator implements ClassGenerator {
     }
 
     private static class ClassGenerationHandler {
+        // used in subclasses
         void startType(Class<?> type) {
         }
 
@@ -871,12 +871,17 @@ abstract class AbstractClassGenerator implements ClassGenerator {
         @Override
         public void visitInstanceMethod(Method method) {
             Class<?>[] parameterTypes = method.getParameterTypes();
-            if (parameterTypes.length > 0 && parameterTypes[parameterTypes.length - 1].equals(Action.class)) {
-                actionMethods.add(method);
-            } else if (parameterTypes.length > 0 && parameterTypes[parameterTypes.length - 1].equals(Closure.class)) {
-                closureMethods.put(method.getName(), method);
-            } else if (method.getName().equals("toString") && parameterTypes.length == 0 && method.getDeclaringClass() != Object.class) {
-                providesOwnToString = true;
+            if (parameterTypes.length == 0) {
+                if (method.getName().equals("toString") && method.getDeclaringClass() != Object.class) {
+                    providesOwnToString = true;
+                }
+            } else {
+                Class<?> lastParameterType = parameterTypes[parameterTypes.length - 1];
+                if (lastParameterType.equals(Action.class) || lastParameterType.equals(IsolatedAction.class)) {
+                    actionMethods.add(method);
+                } else if (lastParameterType.equals(Closure.class)) {
+                    closureMethods.put(method.getName(), method);
+                }
             }
         }
 
@@ -963,7 +968,7 @@ abstract class AbstractClassGenerator implements ClassGenerator {
         @Override
         void startType(Class<?> type) {
             this.type = type;
-            extensible = JavaPropertyReflectionUtil.getAnnotation(type, NonExtensible.class) == null;
+            extensible = !JavaReflectionUtil.hasAnnotation(type, NonExtensible.class);
 
             noMappingClass = Object.class;
             for (Class<?> c = type; c != null && noMappingClass == Object.class; c = c.getSuperclass()) {
@@ -987,9 +992,8 @@ abstract class AbstractClassGenerator implements ClassGenerator {
                     hasExtensionAwareImplementation = true;
                     return true;
                 }
-                if (property.getName().equals("conventionMapping") || property.getName().equals("convention")) {
-                    return true;
-                }
+                return property.getName().equals("conventionMapping")
+                    || property.getName().equals("convention");
             }
 
             return false;
@@ -1120,7 +1124,7 @@ abstract class AbstractClassGenerator implements ClassGenerator {
                 visitor.markPropertyAsIneligibleForConventionMapping(property);
             }
             for (PropertyMetadata property : readOnlyProperties) {
-                if (hasPropertyType(property)) {
+                if (isReattachProperty(property)) {
                     boolean applyRole = isRoleType(property);
                     visitor.attachOnDemand(property, applyRole);
                 }
@@ -1191,8 +1195,8 @@ abstract class AbstractClassGenerator implements ClassGenerator {
             // For ConfigurableFileCollection we generate setters just for readonly properties,
             // since we want to support += for mutable FileCollection properties, but we don't support += for ConfigurableFileCollection (yet).
             // And if we generate setter override for ConfigurableFileCollection, it's difficult to distinguish between these two cases in setFromAnyValue method.
-            if (property.isReadable() && hasPropertyType(property) ||
-                property.isReadOnly() && isConfigurableFileCollectionType(property.getType())) {
+            if ((property.isReadable() && hasPropertyType(property)) ||
+                (property.isReadOnly() && isConfigurableFileCollectionType(property.getType()))) {
                 lazyGroovySupportTyped.add(property);
             }
         }
