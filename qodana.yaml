@@ -16,5 +16,5 @@ include:
 
 projectJDK: 11 #(Applied in CI/CD pipeline)
 
-linter: registry.jetbrains.team/p/sa/containers/qodana-jvm:latest
+linter: registry.jetbrains.team/p/sa/containers/qodana-jvm:2024.2-nightly
 disableSanityInspections: true
