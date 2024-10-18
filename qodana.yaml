@@ -14,7 +14,7 @@ include:
   - name: QodanaJavaSanity
   - name: HighlightVisitorInternal
 
-projectJDK: 11 #(Applied in CI/CD pipeline)
+projectJDK: 17 #(Applied in CI/CD pipeline)
 
 linter: registry.jetbrains.team/p/sa/containers/qodana-jvm:latest
 disableSanityInspections: true
